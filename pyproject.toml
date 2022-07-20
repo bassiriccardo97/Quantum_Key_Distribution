@@ -1,0 +1,24 @@
+[tool.poetry]
+name = "quantum_key_distribution"
+version = "0.1.0"
+description = ""
+authors = ["bassiriccardo97 <48254381+bassiriccardo97@users.noreply.github.com>"]
+
+[tool.poetry.dependencies]
+python = "^3.10"
+jsons = "^1.6.3"
+uvicorn = "^0.18.2"
+fastapi = "^0.79.0"
+pydantic = "^1.9.1"
+orm = "^0.3.1"
+httpx = "^0.23.0"
+networkx = "^2.8.5"
+pytest = "^7.1.2"
+pytest-asyncio = "^0.19.0"
+aiosqlite = "^0.17.0"
+
+[tool.poetry.dev-dependencies]
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
