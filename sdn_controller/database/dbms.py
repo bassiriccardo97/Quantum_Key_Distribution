@@ -49,7 +49,7 @@ async def find_peer(new_app: NewAppRequest) -> tuple[RegisterApp | WaitingForRes
             been created, and the list of the KMEs along the path.
     """
     async with lock:
-        await __remove_expired_waiting_ksids()
+        # await __remove_expired_waiting_ksids()
         try:
             ksid: Final[orm.Ksid] = await orm.Ksid.objects.get(
                 src=new_app.src, dst=new_app.dst, qos=new_app.qos

@@ -37,10 +37,6 @@ class Base(ABC):
         self.SDN_CONTROLLER_ADDRESS = f"http://{self.SDN_CONTROLLER_IP}:{self.SND_CONTROLLER_PORT}"
         self.SUPPORTED_EXTENSION_PARAMS: frozenset[str] = frozenset()
         self.LOCAL_DB_URL = f"sqlite:///{self.KME_IP}_{self.SAE_TO_KME_PORT}_local_db"
-        self.avg_connection_time = int(config["SHARED"]["AVG_CONNECTION_TIME"])  # seconds
-        self.avg_link_ttl = int(config["SHARED"]["AVG_LINK_TTL"])   # seconds
-        self.avg_arrival_interval = int(config["SHARED"]["AVG_ARRIVAL_INTERVAL"])    # seconds
-        self.arrival_var = int(config["SHARED"]["ARRIVAL_VAR"])
         self.FUTURE_KEYS = int(config["SHARED"]["FUTURE_KEYS"])
 
     @property
@@ -78,12 +74,12 @@ class Prod(Base):
 
         1. Install PostgreSQL
         2. `sudo -i -u postgres psql`
-        3. `ALTER ROLE postgres WITH PASSWORD 'very_strong_password';`
+        3. `ALTER ROLE postgres WITH PASSWORD 'secret';`
         4. `CREATE DATABASE prod_db;`
         """
         url: str = PostgresDsn.build(
             scheme="postgresql",
-            user="postgres",
+            user=os.environ.get("role"),
             password="secret",
             host="localhost",
             port="5432",

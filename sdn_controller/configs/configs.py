@@ -56,7 +56,7 @@ class Prod(Base):
         """
         url: str = PostgresDsn.build(
             scheme="postgresql",
-            user="postgres",
+            user=os.environ.get("role"),
             password="secret",
             host="localhost",
             port="5432",

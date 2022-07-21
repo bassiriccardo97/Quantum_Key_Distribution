@@ -24,11 +24,13 @@ router: Final[APIRouter] = APIRouter(tags=["enc_keys"])
 async def get_key(
         slave_sae_id: UUID,
         master_sae_id: UUID,
+        number: int = Query(default=1, description="Number of keys requested", ge=1),
         size: int = Query(default=64, description="Size of each key in bits", ge=1)
 ) -> KeyContainer | None:
     """
     API to get the Key for the calling master SAE. Starts the key relay if needed.
     """
+    # number param not implemented
     ksid: orm.Ksid = await get_ksid_on_db(slave_sae_id=slave_sae_id, master_sae_id=master_sae_id)
     new_key: Key
     if not ksid.relay:
