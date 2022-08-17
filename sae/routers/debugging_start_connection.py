@@ -31,8 +31,8 @@ async def connect_to_app(ip: str, port: int, interval: int, key_length: int) -> 
     except httpx.ConnectError:
         log_connection_error()
         return
-    except httpx.ReadTimeout or httpx.ConnectTimeout or TimeoutError or CancelledError:
-        logging.getLogger().error(f"{Bcolors.RED}ERROR{Bcolors.ENDC} -> Timeout connection.")
+    # except httpx.ReadTimeout or httpx.ConnectTimeout or TimeoutError or CancelledError:
+    #    logging.getLogger().error(f"{Bcolors.RED}ERROR{Bcolors.ENDC} -> Timeout connection.")
 
 
 @router.get(

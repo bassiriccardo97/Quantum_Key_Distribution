@@ -19,8 +19,8 @@ class Base(ABC):
         self.PORT = int(config["GENERIC"]["PORT"])
         self.LOCAL_DB_URL = f"sqlite:///Controller_local_db"
         self.TTL = int(config["GENERIC"]["TTL"])
-        self.FUTURE_KEYS = int(config["GENERIC"]["FUTURE_KEYS"])
-        self.N_KMES = int(config["RING"]["n_kme"])
+        self.KEYS_AHEAD = int(config["GENERIC"]["KEYS_AHEAD"])
+        self.N_LINKS = int(config["RING"]["n_links"])
 
     @property
     @abstractmethod
@@ -56,7 +56,7 @@ class Prod(Base):
         """
         url: str = PostgresDsn.build(
             scheme="postgresql",
-            user=os.environ.get("role"),
+            user="postgres",
             password="secret",
             host="localhost",
             port="5432",

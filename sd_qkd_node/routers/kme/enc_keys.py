@@ -1,14 +1,18 @@
+import logging
+from os import environ
 from typing import Final
 from uuid import UUID
 
 from fastapi import APIRouter, Query
 
+from sd_qkd_node.configs import Config
 from sd_qkd_node.database import orm
-from sd_qkd_node.database.dbms import dbms_get_kme_address, dbms_first_kme, dbms_last_kme, \
-    dbms_generate_key, dbms_get_key, get_ksid_on_db
-from sd_qkd_node.external_api import kme_api_enc_key, kme_api_start_key_relay
+from sd_qkd_node.database.dbms import dbms_get_kme_address, dbms_get_ksid, get_local_key, dbms_generate_keys_direct, \
+    dbms_generate_keys_relay, dbms_generate_encryption_key_for_relay, dbms_get_encryption_key
+from sd_qkd_node.external_api import kme_api_enc_key, kme_api_key_relay
 from sd_qkd_node.model import Key
 from sd_qkd_node.model.key_container import KeyContainer
+from sd_qkd_node.model.key_relay import KeyRelayRequest
 from sd_qkd_node.utils import encrypt_key
 
 
@@ -30,23 +34,78 @@ async def get_key(
     """
     API to get the Key for the calling master SAE. Starts the key relay if needed.
     """
-    # number param not implemented
-    ksid: orm.Ksid = await get_ksid_on_db(slave_sae_id=slave_sae_id, master_sae_id=master_sae_id)
-    new_key: Key
-    if not ksid.relay:
-        new_key = await dbms_generate_key(ksid=ksid, size=size, relay=False)
-        return KeyContainer(keys=tuple([new_key]))
-    else:
-        first: Final[bool] = await dbms_first_kme(ksid=ksid)
-        last: Final[bool] = await dbms_last_kme(ksid=ksid)
-        if not last:
-            new_key, next_kme = await dbms_generate_key(ksid=ksid, size=size, relay=True)
-            next_kme_addr = await dbms_get_kme_address(dst=next_kme)
-            await kme_api_enc_key(master_sae_id, slave_sae_id, next_kme_addr, size)
-            if first:
-                key_relay: Final[KeyContainer] = await dbms_get_key(ksid=ksid)
-                key_copy = encrypt_key(key_to_enc=new_key, enc_key=key_relay.keys[0])
-                await kme_api_start_key_relay(key_copy, ksid.ksid, next_kme_addr)
-                return KeyContainer(keys=tuple([new_key]))
+    # TODO number param not implemented
 
-    return None
+    ksid: orm.Ksid = await dbms_get_ksid(slave_sae_id=slave_sae_id, master_sae_id=master_sae_id)
+    if ksid.relay:
+        return await __get_key_relay(ksid=ksid, size=size)
+    else:
+        return await __get_key_direct(ksid=ksid, size=size)
+
+
+async def __get_key_direct(ksid: orm.Ksid, size: int) -> KeyContainer:
+    new_key: Key | None = None
+    if environ.get("qkp") == "yes":
+        # gets key generated ahead and stored locally
+        logging.getLogger().info("QKP: Searching local keys")
+        new_key = await get_local_key(ksid=ksid.ksid)
+        if new_key is None:
+            logging.getLogger().info("QKP: No local key, generating new ones")
+            # generates Config.FUTURE_KEYS + 1 keys, 1 stored on the shared db and returned,
+            # while the others stored locally AND on the shared db:
+            # - locally to exploit get_local_key on master kme
+            # - on shared db to make the slave kme retrieve the instructions
+            new_key = await dbms_generate_keys_direct(ksid=ksid, size=size, local=True)
+    else:
+        # generates and return 1 key stored on the shared db
+        logging.getLogger().info("NO QKP: generating new key")
+        new_key = await dbms_generate_keys_direct(ksid=ksid, size=size, local=False)
+    return KeyContainer(keys=tuple([new_key]))
+
+
+async def __get_key_relay(ksid: orm.Ksid, size: int) -> KeyContainer | None:
+    new_key: Key | None = None
+    future_keys: list[Key] = []
+    first = ksid.kme_src == Config.KME_ID
+    if not first:
+        await dbms_generate_encryption_key_for_relay(ksid=ksid, size=size)
+    else:
+        if environ.get("qkp") == "yes":
+            # gets key generated ahead and stored locally
+            logging.getLogger().info("QKP: Searching local keys (relay)")
+            new_key = await get_local_key(ksid=ksid.ksid)
+            if new_key is None:
+                # generates and return Config.FUTURE_KEYS + 1 keys,
+                # the first Config.FUTURE_KEYS stored locally ('future_keys')
+                # the last ('new_key') is the one that will be immediately returned, thus not even stored
+                logging.getLogger().info("QKP: No local key, generating new ones (relay)")
+                new_key, future_keys = await dbms_generate_keys_relay(ksid=ksid, size=size, local=True)
+            else:
+                return KeyContainer(keys=tuple([new_key]))
+        else:
+            logging.getLogger().info("NO QKP: generating new key (relay)")
+            # generates only one key that is not even stored since is returned immediately
+            new_key = await dbms_generate_keys_relay(ksid=ksid, size=size, local=False)
+    # if it comes to this point means that new keys have been generated together with encryption keys chain,
+    # so they must be relayed
+    next_kme_addr = await dbms_get_kme_address(dst=ksid.kme_dst)
+    await kme_api_enc_key(ksid.src, ksid.dst, next_kme_addr, size)
+    if first:
+        await __start_relay(ksid=ksid, future_keys=future_keys, new_key=new_key, next_kme_addr=next_kme_addr)
+        return KeyContainer(keys=tuple([new_key]))
+
+
+async def __start_relay(ksid: orm.Ksid, future_keys: list[Key], new_key: Key, next_kme_addr: str):
+    key_copies: list[Key] = []
+    # gets the enc key generated by the second node
+    enc_key: Final[Key] = await dbms_get_encryption_key(ksid=ksid)
+    # TODO probably also the key_id should be encrypted to avoid leak of any type
+    if environ.get("qkp") == "yes":
+        logging.getLogger().info("QKP: encrypting keys (relay)")
+        for k in future_keys:
+            key_copies.append(encrypt_key(key_to_enc=k, enc_key=enc_key))
+    else:
+        logging.getLogger().info("NO QKP: encrypting key (relay)")
+    key_copies.append(encrypt_key(key_to_enc=new_key, enc_key=enc_key))
+    req: KeyRelayRequest = KeyRelayRequest(keys=KeyContainer(keys=tuple(key_copies)), ksid=ksid.ksid)
+    await kme_api_key_relay(request=req, next_kme_addr=next_kme_addr)

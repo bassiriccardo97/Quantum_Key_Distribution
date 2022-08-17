@@ -25,10 +25,12 @@ async def assign_ksid(
     API To get the Ksid assigned to a connection.
     Called by the KME the SAE refers to.
     """
+    logging.getLogger().info(f"assigning ksid for connection towards ...{str(request.dst)[25:]}")
     connections[request.ksid] = Connection(
         ksid=request.ksid, src=request.src, dst=request.dst, qos=request.qos, logger=logging.getLogger()
     )
     if Config.SAE_ID == request.src:
+        logging.getLogger().warning(f"ksid assigned for connection towards ...{str(request.dst)[25:]}")
         Config.get_connection_by_sae_id_on_src(request.dst)["ksid"] = request.ksid
         background_tasks.add_task(connections[request.ksid].ask_key_thread.run)
     else:

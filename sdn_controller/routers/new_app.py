@@ -29,18 +29,16 @@ async def new_app(
     else:
         for i in range(1, len(kmes) - 1):
             kme_addr = await get_kme_address(kmes[i])
-            response.kme_src = kmes[i]
+            response.kme_src = kmes[i - 1]
             response.kme_dst = kmes[i + 1]
             await agent_api_register_app(kme_addr, response)
 
-        i = len(kmes) - 1
-        kme_addr = await get_kme_address(kmes[i])
-        response.kme_src = kmes[i - 1]
-        response.kme_dst = kmes[i]
+        kme_addr = await get_kme_address(kmes[-1])
+        response.kme_src = kmes[-2]
+        response.kme_dst = kmes[-1]
         await agent_api_register_app(kme_addr, response)
 
-        i = 0
-        kme_addr = await get_kme_address(kmes[i])
-        response.kme_src = kmes[i]
-        response.kme_dst = kmes[i + 1]
+        kme_addr = await get_kme_address(kmes[0])
+        response.kme_src = kmes[0]
+        response.kme_dst = kmes[1]
         await agent_api_register_app(kme_addr, response)

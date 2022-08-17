@@ -4,7 +4,7 @@ from uuid import UUID
 from fastapi import APIRouter
 
 from sd_qkd_node.database import orm
-from sd_qkd_node.database.dbms import dbms_get_key, get_ksid_on_db
+from sd_qkd_node.database.dbms import dbms_get_ksid, dbms_get_key_direct, dbms_get_relayed_key
 from sd_qkd_node.model.key_container import KeyContainer
 
 router: Final[APIRouter] = APIRouter(tags=["dec_keys"])
@@ -24,6 +24,9 @@ async def get_key_with_key_i_ds(
     """
     API to get the Key for the calling slave SAE.
     """
-    ksid: orm.Ksid = await get_ksid_on_db(slave_sae_id=slave_sae_id, master_sae_id=master_sae_id)
-    kc = await dbms_get_key(ksid=ksid, key_id=key_ids)
+    ksid: orm.Ksid = await dbms_get_ksid(slave_sae_id=slave_sae_id, master_sae_id=master_sae_id)
+    if not ksid.relay:
+        kc = await dbms_get_key_direct(key_id=key_ids)
+    else:
+        kc = await dbms_get_relayed_key(key_id=key_ids)
     return kc

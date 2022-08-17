@@ -1,8 +1,11 @@
 import logging
 from uuid import UUID
 
+import httpx
+
 from sd_qkd_node.configs import Config
 from sd_qkd_node.database import orm
+from sd_qkd_node.model.errors import Error
 
 
 class Bcolors:
@@ -28,19 +31,14 @@ def set_logging() -> None:
 
 def log_qc_server_started() -> None:
     """QKD Node running on http://ip:port... Press CTRL+C to quit."""
-    print(
-        f"QKD Node running on http://{Config.KME_IP}:{Config.SAE_TO_KME_PORT}... Press CTRL+C to quit."
-    )
 
 
 def log_qc_shutdown_completed() -> None:
     """QCServer shutdown completed."""
-    print(f"QCServer shutdown completed.")
 
 
 def log_qc_listening(host: str, port: int) -> None:
     """QCServer listening on *host:port*"""
-    print(f"QCServer listening on {host}:{port}")
 
 
 def log_connection_created(ksid: orm.Ksid) -> None:
@@ -53,22 +51,10 @@ def log_connection_created(ksid: orm.Ksid) -> None:
     KME dst: *kme_dst*
     Relay: *relay*
     """
-    print(
-        f"\n{Bcolors.OKGREEN}[OK]{Bcolors.ENDC}\tConnection added:\n"
-        f"\tASSIGNED KSID: {Bcolors.BOLD}{ksid.ksid}{Bcolors.ENDC}\n"
-        f"\tSAE src: {ksid.src}\n"
-        f"\tSAE dst: {ksid.dst}\n"
-        f"\tKME src: {ksid.kme_src}\n"
-        f"\tKME dst: {ksid.kme_dst}\n"
-        f"\tRelay: {ksid.relay}\n"
-    )
 
 
 def log_connection_closed(ksid: UUID) -> None:
     """[!]  Connection closed: *ksid*"""
-    print(
-        f"\n{Bcolors.WARNING}[!]{Bcolors.ENDC}\tConnection closed: {Bcolors.BOLD}{ksid}{Bcolors.ENDC}"
-    )
 
 
 def log_added_sae(sae: orm.Sae) -> None:
@@ -78,28 +64,38 @@ def log_added_sae(sae: orm.Sae) -> None:
     ip: *ip*
     port: *port*
     """
-    print(
-        f"\n{Bcolors.OKGREEN}SAE added:{Bcolors.ENDC}\n"
-        f"\tUUID: {sae.sae_id}\n"
-        f"\tip: {sae.ip}\n"
-        f"\tport: {sae.port}\n"
-    )
 
 
 def log_waiting_app() -> None:
     """[-]  Waiting the other app for Ksid"""
-    print(f"{Bcolors.OKBLUE}[-]{Bcolors.ENDC}\tWaiting the other app for Ksid")
 
 
 def log_kme_id(kme: UUID) -> None:
     """Kme id: *kme*"""
-    print(
-        f"\n{Bcolors.OKGREEN}Kme id:{Bcolors.ENDC} {Bcolors.BOLD}{kme}{Bcolors.ENDC}"
-    )
 
 
 def log_shutdown_completed() -> None:
     """QKD Node shutdown completed."""
-    print(
-        f"\nQKD Node shutdown completed."
-    )
+
+
+def log_error(response: httpx.Response, ksid: UUID | None) -> None:
+    """[ERR]    *error-message*."""
+    err = Error(**response.json())
+    if "not found" in err.message:
+        if ksid is not None:
+            logging.getLogger().error(
+                f"{Bcolors.HEADER}CRITICAL{Bcolors.ENDC} -> Connection ...{str(ksid)[25:]} {err.message}"
+            )
+        else:
+            logging.getLogger().error(
+                f"{Bcolors.HEADER}CRITICAL{Bcolors.ENDC} -> {err.message}"
+            )
+    else:
+        if ksid is not None:
+            logging.getLogger().error(
+                f"{Bcolors.FAIL}ERROR{Bcolors.ENDC} -> Connection ...{str(ksid)[25:]} {err.message}"
+            )
+        else:
+            logging.getLogger().error(
+                f"{Bcolors.FAIL}ERROR{Bcolors.ENDC} -> {err.message}"
+            )

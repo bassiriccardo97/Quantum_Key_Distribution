@@ -13,9 +13,10 @@ async def agent_api_register_app(kme_addr: str, response: WaitingForResponse | R
     """Calls the API register_app."""
     async with AsyncClient() as client:
         try:
-            logging.getLogger().info(
-                f"DEBUG -> calling register_app on KME {kme_addr}"
-            )
+            if isinstance(response, RegisterApp):
+                logging.getLogger().info(
+                    f"calling register_app on KME {kme_addr} for connection ...{str(response.src)[25:]} -> ...{str(response.dst)[25:]}"
+                )
             await client.post(
                 url=f"{kme_addr}/sdn_agent/register_app",
                 json=dump(response),

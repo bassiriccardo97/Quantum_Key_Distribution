@@ -1,13 +1,16 @@
 import logging
 from uuid import UUID
 
+import httpx
 from fastapi import HTTPException
 from httpx import AsyncClient, ConnectError, ReadError, Response
 
+from sd_qkd_node import strings
 from sd_qkd_node.configs import Config
 from sd_qkd_node.database.orm import Ksid
 from sd_qkd_node.encoder import dump
 from sd_qkd_node.model import Key
+from sd_qkd_node.model.key_container import KeyContainer
 from sd_qkd_node.model.key_relay import KeyRelayRequest
 from sd_qkd_node.model.new_app import NewAppRequest
 from sd_qkd_node.model.new_kme import NewKmeRequest
@@ -33,32 +36,10 @@ async def kme_api_enc_key(master_id: UUID, slave_id: UUID, next_kme_addr: str, s
             )
 
 
-async def kme_api_start_key_relay(key_copy: Key, ksid: UUID, next_kme_addr: str) -> None:
-    async with AsyncClient() as client:
-        request = KeyRelayRequest(key=key_copy, ksid=ksid, kme_src=Config.KME_ID)
-        try:
-            logging.getLogger().info(
-                f"INFO -> calling key_relay on KME {next_kme_addr}"
-            )
-            await client.post(
-                url=f"{next_kme_addr}{Config.KME_BASE_URL}/key_relay",
-                json=dump(request),
-                timeout=None
-            )
-        except (ConnectError, ReadError):
-            raise HTTPException(
-                status_code=500,
-                detail="Failed to connect"
-            )
-
-
 async def kme_api_key_relay(request: KeyRelayRequest, next_kme_addr: str) -> None:
     async with AsyncClient() as client:
         try:
-            logging.getLogger().info(
-                f"INFO -> calling key_relay on KME {next_kme_addr}"
-            )
-            await client.post(
+            res: Response = await client.post(
                 url=f"{next_kme_addr}{Config.KME_BASE_URL}/key_relay",
                 json=dump(request),
                 timeout=None
@@ -115,7 +96,7 @@ async def sae_api_assign_ksid(ksid: Ksid, address: str) -> None:
     async with AsyncClient() as client:
         try:
             logging.getLogger().info(
-                f"INFO -> calling assign_ksid on SAE {address}"
+                f"calling assign_ksid on SAE ...{str(ksid.src)[25:]}"
             )
             await client.post(
                 url=f"{address}/assign_ksid",

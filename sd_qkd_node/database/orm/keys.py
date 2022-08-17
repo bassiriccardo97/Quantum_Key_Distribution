@@ -11,6 +11,8 @@ class Key(Model):  # type: ignore
     ksid: UUID
     instructions: object
     relay: bool
+    # when link_id is not assigned the key is a direct/relay key to be delivered to SAEs
+    # otherwise it is an enc/dec key for key relay
     link_id: UUID
 
     tablename = "keys"

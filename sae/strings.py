@@ -35,7 +35,7 @@ def log_got_key(response: httpx.Response, companion: UUID) -> None:
         f"\n{Bcolors.YELLOW}[-]{Bcolors.ENDC}\tGot key: {kc.keys[0].key}"
     )
     logging.getLogger().warning(
-        f"{Bcolors.BLUE}KEY{Bcolors.ENDC} -> {kc.keys[0].key} [Companion SAE ...{str(companion)[25:]}]"
+        f" [Companion SAE ...{str(companion)[25:]}] {Bcolors.BLUE}KEY{Bcolors.ENDC} -> {kc.keys[0].key}"
     )
 
 

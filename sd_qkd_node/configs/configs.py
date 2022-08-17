@@ -37,7 +37,7 @@ class Base(ABC):
         self.SDN_CONTROLLER_ADDRESS = f"http://{self.SDN_CONTROLLER_IP}:{self.SND_CONTROLLER_PORT}"
         self.SUPPORTED_EXTENSION_PARAMS: frozenset[str] = frozenset()
         self.LOCAL_DB_URL = f"sqlite:///{self.KME_IP}_{self.SAE_TO_KME_PORT}_local_db"
-        self.FUTURE_KEYS = int(config["SHARED"]["FUTURE_KEYS"])
+        self.KEYS_AHEAD = int(config["SHARED"]["KEYS_AHEAD"])
 
     @property
     @abstractmethod
@@ -79,7 +79,7 @@ class Prod(Base):
         """
         url: str = PostgresDsn.build(
             scheme="postgresql",
-            user=os.environ.get("role"),
+            user="postgres",
             password="secret",
             host="localhost",
             port="5432",

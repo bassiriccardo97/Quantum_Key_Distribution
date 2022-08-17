@@ -3,7 +3,7 @@ from uuid import UUID
 
 import httpx
 from fastapi import HTTPException
-from httpx import AsyncClient, ReadError, ConnectError
+from httpx import AsyncClient, ReadError, ConnectError, ConnectTimeout
 
 from sae.configs import Config
 from sae.encoder import dump
@@ -16,8 +16,8 @@ async def kme_api_enc_key(slave_id: UUID) -> httpx.Response:
     Returns a httpx Response."""
     async with AsyncClient() as client:
         try:
-            logging.getLogger().info(
-                f"INFO calling enc_keys on KME {Config.KME_IP}:{Config.KME_PORT}"
+            logging.getLogger().warning(
+                f"calling enc_keys to communicate with ...{str(slave_id)[25:]}"
             )
             resp: httpx.Response = await client.get(
                 url=f"http://{Config.KME_IP}:{Config.KME_PORT}{Config.KME_BASE_URL}/{slave_id}/enc_keys",
@@ -133,11 +133,11 @@ async def sae_api_ask_connection(ip: str, port: int) -> httpx.Response:
             resp: httpx.Response = await client.post(
                 url=f"http://{ip}:{port}/ask_connection",
                 json=dump(request),
-                timeout=5
+                timeout=None
             )
             Config.get_connection_by_ip_port_on_src(ip, port)["sae_id"] = UUID(resp.json())
             return resp
-        except (ConnectError, ReadError):
+        except (ConnectError, ReadError, ConnectTimeout):
             raise HTTPException(
                 status_code=500,
                 detail="Failed to connect"
@@ -159,9 +159,6 @@ async def agent_api_open_key_session(
         )
     async with AsyncClient() as client:
         try:
-            logging.getLogger().info(
-                f"INFO calling open_key_session on KME {Config.KME_IP}:{Config.KME_PORT}"
-            )
             resp: httpx.Response = await client.post(
                 url=f"http://{Config.KME_IP}:{Config.KME_PORT}{Config.AGENT_BASE_URL}/open_key_session",
                 json=dump(app_registration),

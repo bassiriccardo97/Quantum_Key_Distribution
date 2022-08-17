@@ -17,6 +17,7 @@ from sdn_controller.strings import log_connection_closed, log_link_added, log_co
 from sdn_controller.utils import now
 
 lock = asyncio.Lock()
+link_lock = asyncio.Lock()
 
 
 async def add_new_kme(new_kme: NewKmeRequest) -> NewKmeResponse:
@@ -61,27 +62,23 @@ async def find_peer(new_app: NewAppRequest) -> tuple[RegisterApp | WaitingForRes
             else:
                 path = get_path(kme_src=new_app.kme, kme_dst=ksid.kme_dst, req_rate=req_rate)
             log_connection_created(ksid=ksid, new_kme=new_app.kme)
-            relay = False
-            if len(path) > 2:
-                relay = True
             use_rate_in_path(path, req_rate)
             if new_app.master:
                 await ksid.update(kme_src=new_app.kme)
                 return RegisterApp(
                     ksid=ksid.ksid, src=new_app.src, dst=ksid.dst, kme_src=new_app.kme,
-                    kme_dst=ksid.kme_dst, qos=ksid.qos, start_time=ksid.start_time, relay=relay
+                    kme_dst=ksid.kme_dst, qos=ksid.qos, start_time=ksid.start_time, relay=len(path) > 2
                 ), path
             else:
                 await ksid.update(kme_dst=new_app.kme)
                 return RegisterApp(
                     ksid=ksid.ksid, src=new_app.src, dst=ksid.dst, kme_src=ksid.kme_src,
-                    kme_dst=new_app.kme, qos=ksid.qos, start_time=ksid.start_time, relay=relay
+                    kme_dst=new_app.kme, qos=ksid.qos, start_time=ksid.start_time, relay=len(path) > 2
                 ), path
         except NoMatch:
-            start_time = now()
             log_connection_required(src=new_app.src, dst=new_app.dst)
             await orm.Ksid.objects.create(
-                src=new_app.src, dst=new_app.dst, qos=new_app.qos, kme_dst=new_app.kme, start_time=start_time
+                src=new_app.src, dst=new_app.dst, qos=new_app.qos, kme_dst=new_app.kme
             )
             return WaitingForResponse(), []
 
@@ -102,7 +99,7 @@ async def add_new_link(
         link_id: uuid.UUID, kme_id: uuid.UUID, rate: float, ttl: int
 ) -> tuple[uuid.UUID, uuid.UUID, uuid.UUID | None]:
     """Adds the new QC Link with the ids of the KMEs that it's connected to."""
-    async with lock:
+    async with link_lock:
         link, created = await orm.Link.objects.get_or_create(
             link_id=link_id, defaults={"link_id": link_id, "kme1": kme_id, "rate": rate, "ttl": ttl, "used": 0.0}
         )
@@ -115,7 +112,7 @@ async def add_new_link(
 
 
 async def dbms_update_link(link_id: uuid.UUID, **kwargs: dict[str, int | float]) -> None:
-    async with lock:
+    async with link_lock:
         link: orm.Link = await orm.Link.objects.get(link_id=link_id)
         await link.update(**kwargs)
         if 'rate' in kwargs.keys():

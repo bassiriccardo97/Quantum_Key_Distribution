@@ -8,6 +8,7 @@ import traceback
 from argparse import Namespace, ArgumentParser
 from subprocess import Popen, PIPE
 from random import randint, choice, shuffle
+from datetime import datetime, timedelta
 
 from httpx import AsyncClient
 
@@ -141,7 +142,9 @@ def set_saes() -> None:
     max_sae = int(get_config()["max_sae"])
     ports = [int(get_config()["sae_port"]), int(get_config()["kme_ports"].split(",")[0])]
     j = 0
-    for i in range(0, randint(min_sae, max_sae)):
+    n = randint(min_sae, max_sae)
+    logging.getLogger().warning(f"Starting {n} SAEs.\n")
+    for i in range(0, n):
         sae = SAE(
             address=f"127.0.0.1:{ports[0] + i}",
             ref_kme_addr=f"127.0.0.1:{ports[1] + j if j < len(sd_qkd_nodes) else randint(ports[1], ports[1] + len(sd_qkd_nodes) - 1)}"
@@ -160,17 +163,6 @@ def create_random_connection(app_choices: dict[str, list[SAE]], addr: str) -> SA
     return b
 
 
-'''def get_max_connections() -> int:
-    """Gets the max number of possible connections."""
-    global apps
-    count = 0
-    for a1 in apps:
-        for a2 in apps:
-            if a1.ref_kme != a2.ref_kme:
-                count += 1
-    return count'''
-
-
 def set_connections() -> None:
     global connections, config, apps, sd_qkd_nodes
     key_length = config[0]["SHARED"]["key_length"].split(",")
@@ -178,7 +170,7 @@ def set_connections() -> None:
         int(config[0]["SHARED"]["n_connections"].split(",")[0]),
         int(config[0]["SHARED"]["n_connections"].split(",")[1])
     )
-    interval = config[0]["SHARED"]["request_interval"].split(",")
+    inter = config[0]["SHARED"]["request_interval"].split(",")
     choices_set = {}
     for node in sd_qkd_nodes:
         if node.address not in choices_set.keys():
@@ -197,35 +189,45 @@ def set_connections() -> None:
             # logging.getLogger().error(f"connection {i}: {src.address}, {dst.address}")
             connections.append({
                 "src_ip": "127.0.0.1", "src_port": src.address.split(":")[1], "target_ip": "127.0.0.1",
-                "target_port": dst.address.split(":")[1], "interval": randint(int(interval[0]), int(interval[1])),
+                "target_port": dst.address.split(":")[1], "interval": randint(int(inter[0]), int(inter[1])),
                 "key_length": key_length[randint(0, len(key_length) - 1)]
             })
             i += 1
 
 
 async def start_connections() -> None:
-    global connections
+    global connections, config
+    new_conn_interval = int(config[0]["SHARED"]["new_connection_interval"])
+    i_l = config[0]["SHARED"]["request_interval"].split(",")
+    i = (int(i_l[0]) + int(i_l[1])) / 2
     async with AsyncClient() as client:
-        print(f"{Bcolors.BOLD}\nStarting connections.{Bcolors.ENDC}")
-        printProgressBar(0, len(connections), prefix='Progress:', suffix='Complete', length=50)
         shuffle(connections)
+        tasks = []
+        count = 0
+        logging.getLogger().warning(f"Starting {len(connections)} connections.\n")
         for c in connections:
-            await client.get(
-                url=f"http://{c['src_ip']}:{c['src_port']}/debugging_start_connection",
-                params={
-                    "ip": c['target_ip'], "port": int(c['target_port']),
-                    "interval": c['interval'], "key_length": c['key_length']
-                },
-                timeout=None
-            )
-            time.sleep(1)
-            printProgressBar(connections.index(c) + 1, len(connections), prefix='Progress:', suffix='Complete',
-                             length=50)
+            async def request(conn, cnt):
+                await asyncio.sleep(new_conn_interval * cnt)
+                logging.getLogger().warning(f"{Bcolors.CYAN}Starting connection{Bcolors.ENDC}")
+                await client.get(
+                    url=f"http://{conn['src_ip']}:{conn['src_port']}/debugging_start_connection",
+                    params={
+                        "ip": conn['target_ip'], "port": int(conn['target_port']),
+                        "interval": conn['interval'], "key_length": conn['key_length']
+                    },
+                    timeout=None
+                )
+            count += 1
+            tasks.append(asyncio.ensure_future(request(c, count)))
+        print(f"{Bcolors.BOLD}\nStarting {len(connections)} connections, "
+              f"it takes at least {timedelta(seconds=len(connections) * new_conn_interval)} minutes...", end="\r")
+        await asyncio.gather(*tasks)
+        print(f"{Bcolors.BOLD}All connections started. Simulation is almost done, be patient.{Bcolors.ENDC}")
 
 
 def reset_logs() -> None:
     open('logs.log', 'w').close()
-    logging.basicConfig(level=logging.WARNING, filename="logs.log", format='%(asctime)s SIM: %(message)s')
+    logging.basicConfig(level=logging.WARNING, filename="logs.log", format='\n%(asctime)s SIM: %(message)s')
 
 
 def finished() -> None:
@@ -275,9 +277,6 @@ def finished() -> None:
                 end = True
             if tot < connections_count:
                 tot = closed + failed[0] + failed[1] + expired
-                #if tot >= 0.95 * connections_count:
-                    #print(f"Not closed yet: {connection_added.intersection(connection_closed)}")
-                time.sleep(0.1)
                 printProgressBar(tot, connections_count, prefix='Progress:', suffix='Complete', length=50)
     logs.close()
     repeated = []
@@ -340,7 +339,6 @@ def start_network() -> None:
 
     try:
         print(f"{Bcolors.BOLD}Simulation started... Wait to finish.{Bcolors.ENDC}")
-        # NSFNET topology from topology-zoo
         controller = Popen(get_cmd("controller"), stdout=PIPE)
         time.sleep(2)  # To allow FastAPI to get started
         set_sd_qkd_nodes()
@@ -351,11 +349,8 @@ def start_network() -> None:
         all_created(entities=apps, check_str="Started SAE at")
         set_connections()
         asyncio.run(start_connections())
-        finished()
     except Exception as e:
         logging.error(traceback.format_exc())
-    finally:
-        stop()
 
 
 def set_config() -> tuple[str, configparser]:
@@ -393,3 +388,9 @@ connections = []
 
 if __name__ == '__main__':
     start_network()
+    new_conn_int = int(config[0]["SHARED"]["new_connection_interval"])
+    interval_list = config[0]["SHARED"]["request_interval"].split(",")
+    interval = (int(interval_list[0]) + int(interval_list[1])) / 2
+    #time.sleep((len(connections) * new_conn_int + 5 * interval))
+    finished()
+    stop()

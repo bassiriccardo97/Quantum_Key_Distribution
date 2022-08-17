@@ -1,3 +1,4 @@
+import logging
 import time
 from typing import Final
 from uuid import UUID
@@ -6,6 +7,7 @@ from fastapi import APIRouter
 from httpx import Response
 
 from sae.external_api import kme_api_dec_key
+from sae.model.key_container import KeyContainer
 from sae.strings import log_got_key, log_error
 
 
@@ -28,7 +30,9 @@ async def ask_key(
     """
     response: Response = await kme_api_dec_key(master_sae_id, key_ids)
     if response.status_code == 200:
-        log_got_key(response, master_sae_id)
+        # log_got_key(response, master_sae_id)
+        kc = KeyContainer(**response.json())
+        logging.getLogger().warning(f"received key -> {kc.keys[0].key}")
     else:
         log_error(response, None)
 

@@ -26,8 +26,8 @@ class Ksid(Model):  # type: ignore
         "ksid": UUID(unique=True, allow_null=False),
         "src": UUID(unique=False, allow_null=True),
         "dst": UUID(unique=False, allow_null=True),
-        "kme_src": UUID(unique=False, allow_null=False),
-        "kme_dst": UUID(unique=False, allow_null=False),
+        "kme_src": UUID(unique=False, allow_null=True),
+        "kme_dst": UUID(unique=False, allow_null=True),
         "relay": Boolean(unique=False, allow_null=False),
         "qos": JSON(allow_null=False),
         "start_time": Integer(unique=False, allow_null=False, default=now)

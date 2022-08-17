@@ -1,3 +1,4 @@
+import logging
 from typing import Final
 from uuid import UUID
 
@@ -26,12 +27,14 @@ async def register_app(
     if isinstance(request, WaitingForResponse):
         pass
     else:
+        logging.getLogger().info(f"registering app ...{str(request.src)[25:]} -> ...{str(request.dst)[25:]}")
         ksid: Final[Ksid] = Ksid(
             ksid=request.ksid, src=request.src, dst=request.dst, kme_src=request.kme_src,
             kme_dst=request.kme_dst, qos=request.qos, start_time=request.start_time, relay=request.relay
         )
         await dbms_save_ksid(ksid=ksid)
-        sae_id: Final[UUID] = ksid.src if ksid.kme_src == Config.KME_ID else ksid.dst
+        sae_id: Final[UUID] = request.src if request.kme_src == Config.KME_ID else request.dst
         address, exists = await dbms_get_sae_address(sae_id=sae_id)
+        logging.getLogger().info(f"sae_id = {sae_id}, exists = {exists}")
         if exists:
             await sae_api_assign_ksid(ksid, address)
