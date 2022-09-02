@@ -126,7 +126,7 @@ def get_qcs() -> list[list[str]]:
 def set_qcs() -> None:
     global qcs
     initial_params = get_cmd("qcs")
-    shared_params = ["-i", f"5", "-lb", f"1000", "-ub", f"2000"]
+    shared_params = ["-i", f"5", "-lb", f"100", "-ub", f"300"]
     temp = get_qcs()
     print(f"{Bcolors.BOLD}\nSetting Quantum Channels.{Bcolors.ENDC}")
     for ports in temp:
@@ -186,7 +186,7 @@ def set_connections() -> None:
                 ok = False
                 break
         if ok:
-            # logging.getLogger().error(f"connection {i}: {src.address}, {dst.address}")
+            #print(f"connection {i}: {src.address}, {dst.address}")
             connections.append({
                 "src_ip": "127.0.0.1", "src_port": src.address.split(":")[1], "target_ip": "127.0.0.1",
                 "target_port": dst.address.split(":")[1], "interval": randint(int(inter[0]), int(inter[1])),
@@ -197,7 +197,7 @@ def set_connections() -> None:
 
 async def start_connections() -> None:
     global connections, config
-    new_conn_interval = int(config[0]["SHARED"]["new_connection_interval"])
+    new_conn_interval = float(config[0]["SHARED"]["new_connection_interval"])
     i_l = config[0]["SHARED"]["request_interval"].split(",")
     i = (int(i_l[0]) + int(i_l[1])) / 2
     async with AsyncClient() as client:
@@ -220,7 +220,7 @@ async def start_connections() -> None:
             count += 1
             tasks.append(asyncio.ensure_future(request(c, count)))
         print(f"{Bcolors.BOLD}\nStarting {len(connections)} connections, "
-              f"it takes at least {timedelta(seconds=len(connections) * new_conn_interval)} minutes...", end="\r")
+              f"it takes at least {timedelta(seconds=len(connections) * int(new_conn_interval))} hours...", end="\r")
         await asyncio.gather(*tasks)
         print(f"{Bcolors.BOLD}All connections started. Simulation is almost done, be patient.{Bcolors.ENDC}")
 
@@ -251,8 +251,12 @@ def finished() -> None:
     while not end:
         for line in logs.readlines():
             if f"{Bcolors.BLUE}KEY{Bcolors.ENDC} ->" in line:
-                key = line.split(f"{Bcolors.BLUE}KEY{Bcolors.ENDC} -> ")[1].split(" [")[0]
+                # TODO fix
+                key = line.split(f"{Bcolors.BLUE}KEY{Bcolors.ENDC} -> ")[1][:-2]
                 keys_set.add(key)
+                keys_list.append(key)
+            if f"received key ->" in line:
+                key = line.split(f"received key -> ")[1][:-2]
                 keys_list.append(key)
             if f"Connection added:" in line:
                 opened += 1
@@ -388,9 +392,9 @@ connections = []
 
 if __name__ == '__main__':
     start_network()
-    new_conn_int = int(config[0]["SHARED"]["new_connection_interval"])
-    interval_list = config[0]["SHARED"]["request_interval"].split(",")
-    interval = (int(interval_list[0]) + int(interval_list[1])) / 2
+    #new_conn_int = int(config[0]["SHARED"]["new_connection_interval"])
+    #interval_list = config[0]["SHARED"]["request_interval"].split(",")
+    #interval = (int(interval_list[0]) + int(interval_list[1])) / 2
     #time.sleep((len(connections) * new_conn_int + 5 * interval))
     finished()
     stop()

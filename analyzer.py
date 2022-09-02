@@ -1,3 +1,4 @@
+import datetime
 from datetime import timedelta
 
 
@@ -90,6 +91,8 @@ connections = {}
 launch_time = []
 adjacent_kmes = [(5000, 5001), (5001, 5002), (5002, 5003), (5003, 5004), (5004, 5000)]
 saes = {}
+n_relay = 0
+finish_time: timedelta = timedelta()
 
 for line in file:
     if "Started SAE" in line:
@@ -98,6 +101,8 @@ for line in file:
         conn = f'...{line.split("...")[2][:-1]} -> ...{line.split("...")[1].split(":")[0]}'
         connections[conn] = {}
         connections[conn]["relay"] = check_relay(conn)
+        if check_relay(conn):
+            n_relay += 1
         connections[conn]["first"] = line.split(" ")[1]
     elif "Connection required" in line:
         conn = line[-33:-1]
@@ -127,16 +132,20 @@ for line in file:
                     connections[conn]["key"].append(line.split(" ")[1])
                 else:
                     connections[conn]["key"].append(line.split(" ")[1])
+    elif "CTR: Connection closed" in line:
+        finish_time = get_timedelta(line.split(" ")[1])
 
 avg_start_mid, avg_mid_second, avg_second_end = eval_avg()
 avg_time_keys, avg_time_keys_relay, maximum, max_relay, minimum, min_relay = eval_avg_keys()
 avg_launch_delay = eval_launch_delay()
+duration: timedelta = finish_time - get_timedelta(launch_time[0])
 print("\nAverage times:")
-print(f"\tSAE open_key_session --> {avg_start_mid}s --> CTR connection required")
-print(f"\tCTR connection required --> {avg_mid_second}s --> CTR connection added")
-print(f"\tCTR connection added --> {avg_mid_second}s --> SAE ksid assigned")
+#print(f"\tSAE open_key_session --> {avg_start_mid}s --> CTR connection required")
+#print(f"\tCTR connection required --> {avg_mid_second}s --> CTR connection added")
+#print(f"\tCTR connection added --> {avg_mid_second}s --> SAE ksid assigned")
 print(f"\n\tTotal average time for a complete connection: {round(avg_start_mid + avg_mid_second + avg_mid_second, 2)}s")
-print(f"\n\tAverage delay time to start a connection: {avg_launch_delay}s")
+#print(f"\n\tAverage delay time to start a connection: {avg_launch_delay}s")
 print(f"\n\tAverage time request key --> get key: {avg_time_keys}s (max = {maximum}s, min = {minimum}s)")
-print(f"\tAverage time request key --> get key: {avg_time_keys_relay}s (max = {max_relay}s, min = {min_relay}s) [Relay]")
-print(f"\tTotal average time request key --> get key: {round((avg_time_keys + avg_time_keys_relay) / (2 if avg_time_keys != 0 and avg_time_keys_relay != 0 else 1), 2)}s")
+print(f"\tAverage time request key --> get key: {avg_time_keys_relay}s (max = {max_relay}s, min = {min_relay}s) [Relay {n_relay}]")
+print(f"\tTotal average time request key --> get key: {round((avg_time_keys * (len(connections) - n_relay) + avg_time_keys_relay * n_relay) / len(connections), 2)}s")
+print(f"\tDuration: {round(duration.seconds, 2)}s")

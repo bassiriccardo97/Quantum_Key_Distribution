@@ -117,6 +117,7 @@ async def __retrieve_key_relay(key_id: UUID) -> Key:
             detail=f"Relay key not found ...{str(key_id)[25:]}"
         )
     else:
+        await key.delete()
         return Key(key_ID=key_id, key=key.key)
 
 
@@ -217,8 +218,8 @@ async def dbms_generate_keys_relay(ksid: orm.Ksid, size: int, local: bool) -> tu
 
 
 # OK
-async def dbms_generate_encryption_key_for_relay(ksid: orm.Ksid, size: int) -> None:
-    link: orm.Link = await __get_link_by_companion(companion=ksid.kme_src)
+async def dbms_generate_encryption_key_for_relay(ksid: orm.Ksid, size: int) -> Key:
+    link: orm.Link = await __get_link_by_companion(companion=ksid.kme_dst)
     key_id: UUID = uuid4()
     transaction = await shared_db.transaction()
     async with lock:
@@ -235,11 +236,12 @@ async def dbms_generate_encryption_key_for_relay(ksid: orm.Ksid, size: int) -> N
             )
         else:
             await transaction.commit()
-            await orm.Key.objects.filter(ksid=ksid.ksid, link_id=link.link_id).first()
+            return Key(key_ID=key_id, key=key_material)
+            # await orm.Key.objects.filter(ksid=ksid.ksid, link_id=link.link_id).first()
 
 
 # OK
-async def dbms_get_encryption_key(ksid: orm.Ksid) -> Key:
+"""async def dbms_get_encryption_key(ksid: orm.Ksid) -> Key:
     try:
         link: orm.Link = await __get_link_by_companion(companion=ksid.kme_dst)
         enc_key: Final[orm.Key] = await orm.Key.objects.filter(ksid=ksid.ksid, relay=True, link_id=link.link_id).first()
@@ -252,15 +254,28 @@ async def dbms_get_encryption_key(ksid: orm.Ksid) -> Key:
         raise HTTPException(
             status_code=500,
             detail=f"Encryption key not found"
-        )
+        )"""
 
 
 # OK
-async def dbms_save_relayed_key(ksid: orm.Ksid, keys: list[Key]) -> None:
+async def dbms_save_relayed_key(ksid: orm.Ksid, keys: Key) -> None:
     """Saves the key to relay the key of a Ksid."""
-    for k in keys:
-        logging.getLogger().info(f"SAVING RELAYED KEY {k.key}")
-        await orm.LocalKey.objects.create(key_id=k.key_ID, key=k.key, ksid=ksid.ksid)
+    logging.getLogger().info(f"SAVING RELAYED KEY {keys.key}")
+    await orm.LocalKey.objects.create(key_id=keys.key_ID, key=keys.key, ksid=ksid.ksid)
+
+
+# OK
+async def dbms_get_encryption_key(ksid: orm.Ksid) -> Key:
+    """Saves the key to relay the key of a Ksid."""
+    key: orm.LocalKey = await orm.LocalKey.objects.filter(ksid=ksid.ksid).first()
+    if key is not None:
+        await key.delete()
+        return Key(key_ID=key.key_id, key=key.key)
+    else:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Encryption key not found"
+        )
 
 # ---------------- END NEW KEY GENERATION ----------------
 

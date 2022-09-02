@@ -10,8 +10,9 @@ from sd_qkd_node.configs import Config
 from sd_qkd_node.database.orm import Ksid
 from sd_qkd_node.encoder import dump
 from sd_qkd_node.model import Key
+from sd_qkd_node.model.exchange_key import ExchangeKeyRequest
 from sd_qkd_node.model.key_container import KeyContainer
-from sd_qkd_node.model.key_relay import KeyRelayRequest
+from sd_qkd_node.model.key_relay import KeyRelayRequest, KeyRelayResponse
 from sd_qkd_node.model.new_app import NewAppRequest
 from sd_qkd_node.model.new_kme import NewKmeRequest
 from sd_qkd_node.model.new_link import NewLinkRequest
@@ -36,11 +37,29 @@ async def kme_api_enc_key(master_id: UUID, slave_id: UUID, next_kme_addr: str, s
             )
 
 
-async def kme_api_key_relay(request: KeyRelayRequest, next_kme_addr: str) -> None:
+async def kme_api_key_relay(request: KeyRelayRequest, next_kme_addr: str) -> KeyRelayResponse:
     async with AsyncClient() as client:
         try:
             res: Response = await client.post(
                 url=f"{next_kme_addr}{Config.KME_BASE_URL}/key_relay",
+                json=dump(request),
+                timeout=None
+            )
+            response: KeyRelayResponse = KeyRelayResponse(**res.json())
+            # logging.getLogger().error(f"AAAAAAA {response.addr}")
+            return response
+        except (ConnectError, ReadError):
+            raise HTTPException(
+                status_code=500,
+                detail="Failed to connect"
+            )
+
+
+async def kme_api_exchange_key(request: ExchangeKeyRequest, kme_addr: str) -> None:
+    async with AsyncClient() as client:
+        try:
+            await client.post(
+                url=f"{kme_addr}{Config.KME_BASE_URL}/exchange_key",
                 json=dump(request),
                 timeout=None
             )

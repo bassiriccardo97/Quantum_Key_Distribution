@@ -1,7 +1,8 @@
+import asyncio
 import logging
 import threading
 import time
-from random import randint
+from random import randint, choices
 from uuid import UUID
 
 import httpx
@@ -31,7 +32,8 @@ class AskKeys(threading.Thread):
         self.logger = logger
 
     async def run(self) -> None:
-        while randint(1, 5) != 1:
+        #time.sleep(randint(0, self.connection.qos["Request_interval"]))
+        while choices(population=[True, False], weights=[0.9, 0.1], k=1) == [True]:
             try:
                 response: Response = await kme_api_enc_key(self.connection.dst)
                 if response.status_code == 200:

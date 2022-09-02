@@ -8,7 +8,7 @@ from fastapi.responses import JSONResponse, RedirectResponse
 from sd_qkd_node.configs import Config
 from sd_qkd_node.database import local_models, local_db, shared_db
 from sd_qkd_node.model.errors import BadRequest, ServiceUnavailable, Unauthorized
-from sd_qkd_node.routers.kme import dec_keys, enc_keys, status, key_relay, block_used
+from sd_qkd_node.routers.kme import dec_keys, enc_keys, status, key_relay, block_used, exchange_key
 from sd_qkd_node.routers.sdn_agent import open_key_session, register_app, link_confirmed, close_connection
 
 app: Final[FastAPI] = FastAPI(
@@ -25,6 +25,7 @@ app.include_router(enc_keys.router, prefix=Config.KME_BASE_URL)
 app.include_router(dec_keys.router, prefix=Config.KME_BASE_URL)
 app.include_router(status.router, prefix=Config.KME_BASE_URL)
 app.include_router(key_relay.router, prefix=Config.KME_BASE_URL)
+app.include_router(exchange_key.router, prefix=Config.KME_BASE_URL)
 app.include_router(block_used.router, prefix=Config.KME_BASE_URL)
 app.include_router(open_key_session.router, prefix=Config.AGENT_BASE_URL)
 app.include_router(register_app.router, prefix=Config.AGENT_BASE_URL)
