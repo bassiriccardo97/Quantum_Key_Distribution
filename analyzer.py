@@ -1,5 +1,7 @@
 import datetime
 from datetime import timedelta
+from os import environ
+from statistics import mean
 
 
 def get_timedelta(string: str) -> timedelta:
@@ -8,75 +10,65 @@ def get_timedelta(string: str) -> timedelta:
     return timedelta(hours=int(temp1[0]), minutes=int(temp1[1]), seconds=int(temp1[2]), milliseconds=int(temp1[3]))
 
 
-def eval_avg() -> tuple[float, float, float]:
-    sum_start_mid = 0
-    sum_mid_second = 0
-    sum_second_end = 0
-    count = 0
-    for key, val in connections.items():
-        if "mid" in val.keys():
-            if "second" in val.keys():
-                if "end" in val.keys():
-                    first = get_timedelta(val["first"])
-                    mid = get_timedelta(val["mid"])
-                    second = get_timedelta(val["second"])
-                    end = get_timedelta(val["end"])
-                    sum_start_mid += mid.total_seconds() - first.total_seconds()
-                    sum_mid_second += second.total_seconds() - mid.total_seconds()
-                    sum_second_end += end.total_seconds() - second.total_seconds()
-                    count += 1
-                else:
-                    print(f"Missing 'ksid assigned' for connection {key}.")
+def avg_start_connection() -> tuple[float, float]:
+    waiting_diff = []
+    response_diff = []
+    for i, c in connections.items():
+        w_f = get_timedelta(c["finish open_key_session"][0]).total_seconds()
+        w_i = get_timedelta(c["start open_key_session"][0]).total_seconds()
+        waiting_diff.append(w_f - w_i)
+        if len(c["finish open_key_session"]) > 1:
+            r_f = get_timedelta(c["finish open_key_session"][1]).total_seconds()
+            r_i = get_timedelta(c["start open_key_session"][1]).total_seconds()
+            response_diff.append(r_f - r_i)
+    return mean(waiting_diff) if len(waiting_diff) > 0 else 0, mean(response_diff) if len(response_diff) > 0 else 0
+
+
+def avg_ctr_times() -> tuple[float, float]:
+    waiting_diff = []
+    response_diff = []
+    for i, c in connections.items():
+        w_f = get_timedelta(c["finish new_app"][0]).total_seconds()
+        w_i = get_timedelta(c["start new_app"][0]).total_seconds()
+        waiting_diff.append(w_f - w_i)
+        if len(c["finish new_app"]) > 1:
+            r_f = get_timedelta(c["finish new_app"][1]).total_seconds()
+            r_i = get_timedelta(c["start new_app"][1]).total_seconds()
+            response_diff.append(r_f - r_i)
+    return mean(waiting_diff) if len(waiting_diff) > 0 else 0, mean(response_diff) if len(response_diff) > 0 else 0
+
+
+def avg_keys() -> tuple[float, float]:
+    single_hop_times = []
+    multi_hop_times = []
+    for k, c in connections.items():
+        if "finish enc_keys" in c.keys() and "start enc_keys" in c.keys():
+            for j in range(len(c["finish enc_keys"])):
+                f = get_timedelta(c["finish enc_keys"][j]).total_seconds()
+                i = get_timedelta(c["start enc_keys"][j]).total_seconds()
+                multi_hop_times.append(f - i) if c["relay"] else single_hop_times.append(f - i)
+    return mean(single_hop_times) if len(single_hop_times) > 0 else 0, mean(multi_hop_times) if len(multi_hop_times) > 0 else 0
+
+
+def count_connections_per_type() -> tuple[int, int, int, int]:
+    relay = 0
+    relay_no_key = 0
+    basic_no_key = 0
+    for k, c in connections.items():
+        if c["relay"]:
+            relay += 1
+            if "start enc_keys" in c.keys():
+                if len(c["start enc_keys"]) == 0:
+                    relay_no_key += 1
             else:
-                print(f"Connection [{key}] refused.")
+                relay_no_key += 1
         else:
-            print(f"Missing 'connection required' for connection {key}")
-    return round(sum_start_mid / count, 2), round(sum_mid_second / count, 2), round(sum_second_end / count, 2)
-
-
-def eval_avg_keys() -> tuple[float, float, float, float, float, float]:
-    count = 0
-    count_relay = 0
-    total = 0.0
-    total_relay = 0.0
-    maximum_not_relay = 0.0
-    maximum_relay = 0.0
-    minimum_not_relay = 0.0
-    minimum_relay = 0.0
-    for key in connections.keys():
-        if "enc_key" in connections[key].keys() and "key" in connections[key].keys():
-            for req_time, key_time in zip(connections[key]["enc_key"], connections[key]["key"]):
-                if key_time is not None:
-                    r = get_timedelta(req_time)
-                    k = get_timedelta(key_time)
-                    t = k.total_seconds() - r.total_seconds()
-                    if not connections[key]["relay"]:
-                        if t > maximum_not_relay:
-                            maximum_not_relay = t
-                        elif t < minimum_not_relay:
-                            minimum_not_relay = t
-                        total += t
-                        count += 1
-                    else:
-                        if t > maximum_relay:
-                            maximum_relay = t
-                        elif t < minimum_relay:
-                            minimum_relay = t
-                        total_relay += t
-                        count_relay += 1
-    return round(total / count, 2) if count != 0 else 0, round(total_relay / count_relay, 2) if count_relay != 0 else 0, round(maximum_not_relay, 2), \
-           round(maximum_relay, 2), round(minimum_not_relay, 4), round(minimum_relay, 4)
-
-
-def eval_launch_delay() -> float:
-    sum_delays = 0
-    starts = []
-    for key, val in connections.items():
-        starts.append(get_timedelta(val["first"]))
-    assert len(launch_time) == len(connections.keys())
-    for i in range(len(launch_time)):
-        sum_delays += starts[i].total_seconds() - get_timedelta(launch_time[i]).total_seconds()
-    return round(sum_delays / len(launch_time), 2)
+            if "start enc_keys" in c.keys():
+                if len(c["start enc_keys"]) == 0:
+                    basic_no_key += 1
+            else:
+                basic_no_key += 1
+    return len(connections) - relay, basic_no_key, relay, relay_no_key
 
 
 def check_relay(string: str) -> bool:
@@ -87,65 +79,88 @@ def check_relay(string: str) -> bool:
 
 file_name = "logs.log"
 file = open(file=file_name, mode="r")
-connections = {}
+connections: dict[str: dict[str: list[str]]] = {}
 launch_time = []
 adjacent_kmes = [(5000, 5001), (5001, 5002), (5002, 5003), (5003, 5004), (5004, 5000)]
 saes = {}
 n_relay = 0
-finish_time: timedelta = timedelta()
+total_keys = 0
+key_errors = 0
+connections_with_errors: set[str] = set()
+refused_connections = 0
 
 for line in file:
     if "Started SAE" in line:
         saes[f'...{line.split("...")[1].split(":")[0]}'] = int(line[-5:-1])
     elif "open_key_session" in line:
-        conn = f'...{line.split("...")[2][:-1]} -> ...{line.split("...")[1].split(":")[0]}'
-        connections[conn] = {}
-        connections[conn]["relay"] = check_relay(conn)
-        if check_relay(conn):
-            n_relay += 1
-        connections[conn]["first"] = line.split(" ")[1]
-    elif "Connection required" in line:
-        conn = line[-33:-1]
-        connections[conn]["mid"] = line.split(" ")[1]
-    elif "Connection added" in line:
-        conn = line[-34:-2]
-        connections[conn]["second"] = line.split(" ")[1]
-    elif "ksid assigned" in line:
-        conn = f'...{line.split("...")[1].split(":")[0]} -> ...{line.split("...")[2][:-1]}'
-        connections[conn]["end"] = line.split(" ")[1]
-    elif "enc_keys" in line:
-        conn = f'...{line.split("...")[1].split(":")[0]} -> ...{line.split("...")[2][:-1]}'
-        if conn in connections.keys():
-            if "enc_key" in connections[conn].keys():
-                connections[conn]["enc_key"].append(line.split(" ")[1])
+        conn = f"{line.split('[[')[1].split(']]')[0]}"
+        if "start" in line:
+            if conn not in connections.keys():
+                connections[conn] = {}
+            if "start open_key_session" not in connections[conn].keys():
+                connections[conn]["relay"] = check_relay(conn)
+                if check_relay(conn):
+                    n_relay += 1
+                connections[conn]["start open_key_session"] = [line.split(" ")[1]]
             else:
-                connections[conn]["enc_key"] = [line.split(" ")[1]]
-                connections[conn]["key"] = []
-    elif "Starting connection" in line:
-        launch_time.append(line.split(" ")[1])
-    elif "[94mKEY" in line:
-        conn = f'...{line.split("...")[1].split(":")[0]} -> ...{line.split("...")[2].split("]")[0]}'
-        if conn in connections.keys():
-            if "enc_key" in connections[conn].keys():
-                if len(connections[conn]["enc_key"]) - len(connections[conn]["key"]) > 1:
-                    connections[conn]["key"].append(None)
-                    connections[conn]["key"].append(line.split(" ")[1])
-                else:
-                    connections[conn]["key"].append(line.split(" ")[1])
-    elif "CTR: Connection closed" in line:
-        finish_time = get_timedelta(line.split(" ")[1])
+                connections[conn]["start open_key_session"].append(line.split(" ")[1])
+        if "finish" in line:
+            if "finish open_key_session" not in connections[conn].keys():
+                connections[conn]["finish open_key_session"] = [line.split(" ")[1]]
+            else:
+                connections[conn]["finish open_key_session"].append(line.split(" ")[1])
+    elif "new_app" in line:
+        conn = f"{line.split('[[')[1].split(']]')[0]}"
+        if "start" in line:
+            if "start new_app" not in connections[conn].keys():
+                connections[conn]["start new_app"] = [line.split(" ")[1]]
+            else:
+                connections[conn]["start new_app"].append(line.split(" ")[1])
+        if "finish" in line:
+            if "finish new_app" not in connections[conn].keys():
+                connections[conn]["finish new_app"] = [line.split(" ")[1]]
+            else:
+                connections[conn]["finish new_app"].append(line.split(" ")[1])
+    elif "enc_keys" in line:
+        conn = f"{line.split('[[')[1].split(']]')[0]}"
+        if "start" in line:
+            if "start enc_keys" not in connections[conn].keys():
+                connections[conn]["start enc_keys"] = [line.split(" ")[1]]
+            else:
+                connections[conn]["start enc_keys"].append(line.split(" ")[1])
+            total_keys += 1
+        if "finish" in line:
+            if "finish enc_keys" not in connections[conn].keys():
+                connections[conn]["finish enc_keys"] = [line.split(" ")[1]]
+            else:
+                connections[conn]["finish enc_keys"].append(line.split(" ")[1])
+    elif "Block not found" in line:
+        conn = f"{line.split('[[')[1].split(']]')[0]}"
+        connections[conn]["start enc_keys"].pop()
+        key_errors += 1
+        connections_with_errors.add(conn)
+    elif "Insufficient" in line:
+        conn = f"{line.split('[[')[1].split(']]')[0]}"
+        refused_connections += 1
+        connections[conn]["start open_key_session"].pop()
+        connections[conn]["start new_app"].pop()
 
-avg_start_mid, avg_mid_second, avg_second_end = eval_avg()
-avg_time_keys, avg_time_keys_relay, maximum, max_relay, minimum, min_relay = eval_avg_keys()
-avg_launch_delay = eval_launch_delay()
-duration: timedelta = finish_time - get_timedelta(launch_time[0])
+avg_waiting_conn_node, avg_response_conn_node = avg_start_connection()
+avg_waiting_conn_ctr, avg_response_conn_ctr = avg_ctr_times()
+avg_single_hop_key, avg_multi_hop_key = avg_keys()
+single_hop, single_hop_no_keys, multi_hop, multi_hop_no_keys = count_connections_per_type()
+
+print(f"\nQKP: {environ.get('qkp')}")
+print(f"Active refusing: {environ.get('ref')}")
 print("\nAverage times:")
-#print(f"\tSAE open_key_session --> {avg_start_mid}s --> CTR connection required")
-#print(f"\tCTR connection required --> {avg_mid_second}s --> CTR connection added")
-#print(f"\tCTR connection added --> {avg_mid_second}s --> SAE ksid assigned")
-print(f"\n\tTotal average time for a complete connection: {round(avg_start_mid + avg_mid_second + avg_mid_second, 2)}s")
-#print(f"\n\tAverage delay time to start a connection: {avg_launch_delay}s")
-print(f"\n\tAverage time request key --> get key: {avg_time_keys}s (max = {maximum}s, min = {minimum}s)")
-print(f"\tAverage time request key --> get key: {avg_time_keys_relay}s (max = {max_relay}s, min = {min_relay}s) [Relay {n_relay}]")
-print(f"\tTotal average time request key --> get key: {round((avg_time_keys * (len(connections) - n_relay) + avg_time_keys_relay * n_relay) / len(connections), 2)}s")
-print(f"\tDuration: {round(duration.seconds, 2)}s")
+print(f"\n\tNODE time to evaluate first connection request: {round(avg_waiting_conn_node, 2)}s")
+print(f"\tCTR time to evaluate first connection request: {round(avg_waiting_conn_ctr, 2)}s")
+print(f"\n\n\tNODE time to evaluate second connection request: {round(avg_response_conn_node, 2)}s")
+print(f"\tCTR time to evaluate second connection request: {round(avg_response_conn_ctr, 2)}s")
+print(f"\n\tTotal connections: {len(connections)} [SH: {single_hop}, MH: {multi_hop}]")
+print(f"\tRefused connections: {round((refused_connections / len(connections)) * 100, 2)}%")
+print(f"\tConnections with errors: {round((len(connections_with_errors) / (len(connections) - refused_connections)) * 100, 2)}%")
+print(f"\n\tTime to generate single-hop keys: {round(avg_single_hop_key, 2)}s [{single_hop - single_hop_no_keys} connections]")
+print(f"\tTime to generate multi-hop keys: {round(avg_multi_hop_key, 2)}s [{multi_hop - multi_hop_no_keys} connections]")
+print(f"\n\tTotal delivered keys: {total_keys}")
+print(f"\tKey errors: {round(key_errors / total_keys, 4) * 100}%\n")

@@ -29,12 +29,8 @@ async def ask_connection(
     Config.CONNECTIONS[len(Config.CONNECTIONS)] = {
         "sae_id": request.sae_id, "src_ip": request.ip, "src_port": request.port, "qos": request.qos
     }
-    logging.getLogger().warning(
-        f"calling open_key_session towards ...{str(request.sae_id)[25:]}"
-    )
     response: Final[Response] = await agent_api_open_key_session(request.sae_id, False, request.qos)
     log_connection_accepted_by_sae()
     if response.status_code != 200:
         log_error(response, None)
-        time.sleep(2)
     return str(Config.SAE_ID)

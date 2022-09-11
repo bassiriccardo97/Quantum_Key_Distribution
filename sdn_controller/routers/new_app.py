@@ -1,3 +1,4 @@
+import logging
 from typing import Final
 
 from fastapi import APIRouter
@@ -22,6 +23,9 @@ async def new_app(
     """
     API to add a new connection.
     """
+    logging.getLogger().warning(
+        f"start new_app [[...{str(request.src)[25:]} -> ...{str(request.dst)[25:]}]]"
+    )
     response, kmes = await find_peer(request)
     if isinstance(response, WaitingForResponse):
         kme_addr = await get_kme_address(request.kme)
@@ -42,3 +46,6 @@ async def new_app(
         response.kme_src = kmes[0]
         response.kme_dst = kmes[1]
         await agent_api_register_app(kme_addr, response)
+    logging.getLogger().warning(
+        f"finish new_app [[...{str(request.src)[25:]} -> ...{str(request.dst)[25:]}]]"
+    )

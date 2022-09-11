@@ -61,6 +61,11 @@ async def find_peer(new_app: NewAppRequest) -> tuple[RegisterApp | WaitingForRes
                 path = get_path(kme_src=ksid.kme_src, kme_dst=new_app.kme, req_rate=req_rate)
             else:
                 path = get_path(kme_src=new_app.kme, kme_dst=ksid.kme_dst, req_rate=req_rate)
+            if len(path) == 0:
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Insufficient rate for the connection [[...{str(new_app.src)[25:]} -> ...{str(new_app.dst)[25:]}]]"
+                )
             log_connection_created(ksid=ksid, new_kme=new_app.kme)
             use_rate_in_path(path, req_rate)
             if new_app.master:
@@ -111,12 +116,11 @@ async def add_new_link(
         return link_id, kme_id, None
 
 
-async def dbms_update_link(link_id: uuid.UUID, **kwargs: dict[str, int | float]) -> None:
+async def dbms_update_link(link_id: uuid.UUID, rate: float) -> None:
     async with link_lock:
         link: orm.Link = await orm.Link.objects.get(link_id=link_id)
-        await link.update(**kwargs)
-        if 'rate' in kwargs.keys():
-            update_rate((link.kme1, link.kme2), **kwargs['rate'])
+        await link.update(rate=rate)
+        update_rate((link.kme1, link.kme2), new_rate=rate)
 
 
 async def delete_ksid(ksid: uuid.UUID) -> None:

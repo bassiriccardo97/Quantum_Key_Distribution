@@ -3,6 +3,7 @@ import configparser
 import logging
 import os
 import sys
+import threading
 import time
 import traceback
 from argparse import Namespace, ArgumentParser
@@ -10,6 +11,7 @@ from subprocess import Popen, PIPE
 from random import randint, choice, shuffle
 from datetime import datetime, timedelta
 
+import numpy.random
 from httpx import AsyncClient
 
 
@@ -126,7 +128,7 @@ def get_qcs() -> list[list[str]]:
 def set_qcs() -> None:
     global qcs
     initial_params = get_cmd("qcs")
-    shared_params = ["-i", f"5", "-lb", f"100", "-ub", f"300"]
+    shared_params = ["-i", f"1", "-lb", f"33", "-ub", f"47"]
     temp = get_qcs()
     print(f"{Bcolors.BOLD}\nSetting Quantum Channels.{Bcolors.ENDC}")
     for ports in temp:
@@ -186,7 +188,7 @@ def set_connections() -> None:
                 ok = False
                 break
         if ok:
-            #print(f"connection {i}: {src.address}, {dst.address}")
+            # print(f"connection {i}: {src.address}, {dst.address}")
             connections.append({
                 "src_ip": "127.0.0.1", "src_port": src.address.split(":")[1], "target_ip": "127.0.0.1",
                 "target_port": dst.address.split(":")[1], "interval": randint(int(inter[0]), int(inter[1])),
@@ -196,18 +198,17 @@ def set_connections() -> None:
 
 
 async def start_connections() -> None:
-    global connections, config
+    global connections, config, intervals
     new_conn_interval = float(config[0]["SHARED"]["new_connection_interval"])
-    i_l = config[0]["SHARED"]["request_interval"].split(",")
-    i = (int(i_l[0]) + int(i_l[1])) / 2
     async with AsyncClient() as client:
         shuffle(connections)
         tasks = []
         count = 0
         logging.getLogger().warning(f"Starting {len(connections)} connections.\n")
+        intervals = numpy.random.exponential(new_conn_interval, len(connections))
         for c in connections:
-            async def request(conn, cnt):
-                await asyncio.sleep(new_conn_interval * cnt)
+            async def request(conn, interval):
+                await asyncio.sleep(interval)
                 logging.getLogger().warning(f"{Bcolors.CYAN}Starting connection{Bcolors.ENDC}")
                 await client.get(
                     url=f"http://{conn['src_ip']}:{conn['src_port']}/debugging_start_connection",
@@ -217,12 +218,22 @@ async def start_connections() -> None:
                     },
                     timeout=None
                 )
+
             count += 1
-            tasks.append(asyncio.ensure_future(request(c, count)))
-        print(f"{Bcolors.BOLD}\nStarting {len(connections)} connections, "
-              f"it takes at least {timedelta(seconds=len(connections) * int(new_conn_interval))} hours...", end="\r")
+            tasks.append(asyncio.ensure_future(request(c, sum(intervals[0:connections.index(c)]))))
+        # print(f"{Bcolors.BOLD}\nStarting {len(connections)} connections, "
+        #      f"it takes at least {timedelta(seconds=len(connections) * int(new_conn_interval))} hours...", end="\r")
+        print(f"{Bcolors.BOLD}\nStarting {len(connections)} connections.")
+
+        def bar_thread(inter: list[float]) -> None:
+            printProgressBar(0, len(inter), prefix='Progress:', suffix='Complete', length=50)
+            for i in range(len(inter)):
+                time.sleep(inter[i])
+                printProgressBar(i + 1, len(inter), prefix='Progress:', suffix='Complete', length=50)
+
+        threading.Thread(target=bar_thread, args=(intervals,)).start()
         await asyncio.gather(*tasks)
-        print(f"{Bcolors.BOLD}All connections started. Simulation is almost done, be patient.{Bcolors.ENDC}")
+        # print(f"{Bcolors.BOLD}All connections started. Simulation is almost done, be patient.{Bcolors.ENDC}")
 
 
 def reset_logs() -> None:
@@ -240,89 +251,83 @@ def finished() -> None:
     logs = open('logs.log', 'r')
     connections_count = len(connections)
     failed = [0, 0]
-    expired = 0
     tot = 0
-    other_errors = 0
+    block_not_found = 0
+    keys_list1: list[str] = []
     keys_set: set[str] = set()
-    keys_list: list[str] = []
+    keys_list2: list[str] = []
     print(f"{Bcolors.BOLD}\nConnections terminated.{Bcolors.ENDC}")
     printProgressBar(0, connections_count, prefix='Progress:', suffix='Complete', length=50)
     end = False
     while not end:
         for line in logs.readlines():
             if f"{Bcolors.BLUE}KEY{Bcolors.ENDC} ->" in line:
-                # TODO fix
                 key = line.split(f"{Bcolors.BLUE}KEY{Bcolors.ENDC} -> ")[1][:-2]
+                keys_list1.append(key)
                 keys_set.add(key)
-                keys_list.append(key)
             if f"received key ->" in line:
                 key = line.split(f"received key -> ")[1][:-2]
-                keys_list.append(key)
+                keys_list2.append(key)
             if f"Connection added:" in line:
                 opened += 1
                 connection_added.add(line.split("...")[1].split(" [")[0])
-            if f"ERROR" in line:
-                other_errors += 1
             if f"{Bcolors.MAGENTA}CRITICAL{Bcolors.ENDC}" in line:
-                connections_with_errors.add(line.split("...")[1][:12])
+                connections_with_errors.add(line.split("...")[1][:-2])
+                if " -> Block not found on KME" in line or "-> Block not found for ksid" in line:
+                    block_not_found += 1
             if "CTR: Connection closed:" in line:
                 closed += 1
                 connection_closed.add(line.split("...")[1])
             if "No path for the connection required" in line:
                 failed[0] += 1
-                other_errors -= 1
-            if "Insufficient rate for the connection required" in line:
+            if "Insufficient rate for the connection" in line:
                 failed[1] += 1
-                other_errors -= 1
-            if "Timeout connection." in line:
-                other_errors -= 1
-                expired += 1
-            if opened == closed and (closed + failed[0] + failed[1] + expired == connections_count):
-                end = True
             if tot < connections_count:
-                tot = closed + failed[0] + failed[1] + expired
+                tot = closed + failed[0] + failed[1]
                 printProgressBar(tot, connections_count, prefix='Progress:', suffix='Complete', length=50)
+            if opened == closed and (closed + failed[0] + failed[1] == connections_count):
+                end = True
+                break
+        if end:
+            break
+        time.sleep(30)
     logs.close()
     repeated = []
     for k in keys_set:
         count = 0
-        for k1 in keys_list:
-            if k[0:-2] in k1:
+        for k1 in keys_list1:
+            if k == k1:
                 count += 1
-            if count > 2:
+            if count > 1:
                 repeated.append(k)
                 break
-        if len(repeated) > 0:
-            break
-    errors = len(connections_with_errors)
-    success_perc = ((closed - errors) / connections_count) * 100
-    expired_perc = (expired / connections_count) * 100
-    no_path_perc = (failed[0] / connections_count) * 100
-    insuff_rate_perc = (failed[1] / connections_count) * 100
-    error_perc = (errors / connections_count) * 100
-    other_errors_perc = (other_errors / connections_count) * 100
-    print(f"\nTotal connections: {connections_count}"
-          f"\nSuccessful connections: {'%.2f' % success_perc}%"
-          f"\nConnections timeout expired: {'%.2f' % expired_perc}%"
-          f"\nConnections with key exchange errors: {'%.2f' % error_perc}%"
-          f"\n\tTotal generated keys: {len(keys_set)}"
-          f"\n\tAll keys received by both parties: {len(keys_set) == len(keys_list) / 2}"
-          f"\n\tReused bites in keys: {'True ' + str(repeated) if len(repeated) > 0 else 'False'}"
-          f"\nConnections refused: {'%.2f' % (no_path_perc + insuff_rate_perc)}%"
-          f"\n\tNo path for the connection required: {'%.2f' % no_path_perc}%"
-          f"\n\tInsufficient rate for the connection required: {'%.2f' % insuff_rate_perc}%"
-          f"\nOther errors: {'%.2f' % other_errors_perc}%")
-    logging.getLogger().warning(f"\nTotal connections: {connections_count}"
-                                f"\nSuccessful connections: {'%.2f' % success_perc}%"
-                                f"\nConnections timeout expired: {'%.2f' % expired_perc}%"
-                                f"\nConnections with key exchange errors: {'%.2f' % error_perc}%"
-                                f"\n\tTotal generated keys: {len(keys_set)}"
-                                f"\n\tAll keys received by both parties: {len(keys_set) == len(keys_list) / 2}"
-                                f"\n\tReused bites in keys: {'True ' + str(repeated) if len(repeated) > 0 else 'False'}"
-                                f"\nConnections refused: {'%.2f' % (no_path_perc + insuff_rate_perc)}%"
-                                f"\n\tNo path for the connection required: {'%.2f' % no_path_perc}%"
-                                f"\n\tInsufficient rate for the connection required: {'%.2f' % insuff_rate_perc}%"
-                                f"\nOther errors: {'%.2f' % other_errors_perc}%")
+    # errors = len(connections_with_errors)
+    # success_perc = ((closed - errors) / connections_count) * 100
+    # errors_perc = (errors / connections_count) * 100
+    # no_path_perc = (failed[0] / connections_count) * 100
+    # insuff_rate_perc = (failed[1] / connections_count) * 100
+    # block_not_found_perc = (block_not_found / (len(keys_set) + block_not_found)) * 100
+    # print(f"\nTotal connections: {connections_count}"
+    #      f"\nConnections with NO errors: {'%.2f' % success_perc}%"
+    #      f"\nConnections with errors: {'%.2f' % errors_perc}%"
+    #      f"\n\tTotal generated keys: {len(keys_list1)}"
+    #      f"\n\tAll keys received by both parties: {len(keys_list1) == len(keys_list2)}"
+    #      f"\n\tInsufficient key material: {'%.2f' % block_not_found_perc}%"
+    #      f"\n\tReused bites in keys: {str(len(repeated)) + ' ' + str(repeated) if len(repeated) > 0 else 'False'}"
+    #      f"\nConnections refused: {'%.2f' % (no_path_perc + insuff_rate_perc)}%"
+    #      f"\n\tNo path for the connection required: {'%.2f' % no_path_perc}%"
+    #      f"\n\tInsufficient rate for the connection required: {'%.2f' % insuff_rate_perc}%")
+    # logging.getLogger().warning(f"\nTotal connections: {connections_count}"
+    #                            f"\nConnections with NO errors: {'%.2f' % success_perc}%"
+    #                            f"\nConnections with errors: {'%.2f' % errors_perc}%"
+    #                            f"\n\tTotal generated keys: {len(keys_list1)}"
+    #                            f"\n\tAll keys received by both parties: {len(keys_list1) == len(keys_list2)}"
+    #                            f"\n\tInsufficient key material: {'%.2f' % block_not_found_perc}%"
+    #                            f"\n\tReused bites in keys: {str(len(repeated)) + ' ' + str(repeated) if len(repeated) > 0 else 'False'}"
+    #                            f"\nConnections refused: {'%.2f' % (no_path_perc + insuff_rate_perc)}%"
+    #                            f"\n\tNo path for the connection required: {'%.2f' % no_path_perc}%"
+    #                            f"\n\tInsufficient rate for the connection required: {'%.2f' % insuff_rate_perc}%"
+    #                            )
 
 
 def all_created(entities: list, check_str: str) -> None:
@@ -349,6 +354,8 @@ def start_network() -> None:
         all_created(entities=sd_qkd_nodes, check_str="CTR: KME added")
         set_qcs()
         all_created(entities=qcs, check_str="CTR: Link added:")
+        # To have the qc deliver some bytes
+        time.sleep(5)
         set_saes()
         all_created(entities=apps, check_str="Started SAE at")
         set_connections()
@@ -389,12 +396,14 @@ sd_qkd_nodes: list[KME] = []
 qcs = []
 apps: list[SAE] = []
 connections = []
+intervals = []
 
 if __name__ == '__main__':
     start_network()
-    #new_conn_int = int(config[0]["SHARED"]["new_connection_interval"])
-    #interval_list = config[0]["SHARED"]["request_interval"].split(",")
-    #interval = (int(interval_list[0]) + int(interval_list[1])) / 2
-    #time.sleep((len(connections) * new_conn_int + 5 * interval))
+    # new_conn_int = int(config[0]["SHARED"]["new_connection_interval"])
+    # interval_list = config[0]["SHARED"]["request_interval"].split(",")
+    # interval = (int(interval_list[0]) + int(interval_list[1])) / 2
+    # time.sleep((len(connections) * new_conn_int + 5 * interval))
+    time.sleep(sum(intervals))
     finished()
     stop()

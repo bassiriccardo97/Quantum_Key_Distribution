@@ -1,7 +1,7 @@
 import logging
 from typing import Final
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 
 from sd_qkd_node.configs import Config
 from sd_qkd_node.database import orm
@@ -51,6 +51,11 @@ async def key_relay(
         logging.getLogger().info(f"KEY RELAY ENCRYPTED {request.keys.key}")
         res = await kme_api_key_relay(request, next_kme_addr)
         # logging.getLogger().error(f"RELAYING LAST KME ADDR {res.addr}")
+        if res.addr == "":
+            raise HTTPException(
+                status_code=500,
+                detail="Internal error relaying a key."
+            )
         return res
     else:
         await dbms_save_relayed_key(ksid=ksid, keys=key)

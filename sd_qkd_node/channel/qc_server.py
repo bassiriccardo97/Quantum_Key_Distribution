@@ -107,8 +107,8 @@ async def add_block(new_block: Block) -> None:
     await create_from_qcs_block(new_block)
     ttl = 15
     link, update = update_rate(new_block.link_id, len(new_block.key))
-    new = await dbms_save_link(link_id=new_block.link_id, rate=link.rate, ttl=ttl)
-    if new:
+    if not update:
+        new = await dbms_save_link(link_id=new_block.link_id, rate=link.rate, ttl=ttl)
         await sdnc_api_new_link(new_block.link_id, link.rate, ttl)
-    elif update:
+    else:
         await sdnc_api_update_link(link_id=new_block.link_id, rate=link.rate)

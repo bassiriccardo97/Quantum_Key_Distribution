@@ -1,9 +1,11 @@
+import logging
 from typing import Final
 from uuid import UUID
 
 from fastapi import APIRouter
 
 from sd_qkd_node.database.dbms import update_available_bits
+from sd_qkd_node.model.errors import BlockNotFound
 
 router: Final[APIRouter] = APIRouter(tags=["block_used"])
 
@@ -20,4 +22,7 @@ async def block_used(
     """
     API to set the used bits of the block in the companion KME.
     """
-    await update_available_bits(block_id=block_id, used=used)
+    try:
+        await update_available_bits(block_id=block_id, used=used)
+    except BlockNotFound:
+        logging.getLogger().error(f"Byte update on block failed.")

@@ -27,7 +27,7 @@ async def assign_ksid(
     """
     logging.getLogger().info(f"assigning ksid for connection towards ...{str(request.dst)[25:]}")
     connections[request.ksid] = Connection(
-        ksid=request.ksid, src=request.src, dst=request.dst, qos=request.qos, logger=logging.getLogger()
+        ksid=request.ksid, src=request.src, dst=request.dst, qos=request.qos, logger=logging.getLogger(), duration=Config.average_duration
     )
     if Config.SAE_ID == request.src:
         logging.getLogger().warning(f"ksid assigned for connection towards ...{str(request.dst)[25:]}")

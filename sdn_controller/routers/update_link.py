@@ -18,9 +18,9 @@ router: Final[APIRouter] = APIRouter(tags=["update_link"])
     include_in_schema=False
 )
 async def update_link(
-        link_id: UUID, updates: dict[str, int | float]
+        link_id: UUID, rate: float
 ) -> None:
     """
     API to add a new QC Link in the network.
     """
-    await dbms_update_link(link_id, **updates)
+    await dbms_update_link(link_id, rate)

@@ -45,11 +45,15 @@ async def __get_key_on_db(key_id: UUID | None, ksid: UUID | None, link_id: UUID 
         if key_id is not None:
             # key asked by slave sae with dec_keys
             error = f"...{str(key_id)[25:]}"
+            logging.getLogger().info(f"retrieving key on db for ksid ...{str(ksid)[25:]} [__get_key_on_db]")
             key = await orm.Key.objects.get(key_id=key_id)
+            logging.getLogger().info(f"retrieved key on db for ksid ...{str(ksid)[25:]} [__get_key_on_db]")
         if link_id is not None:
             # key relay
             error = f"for Ksid ...{str(ksid)[25:]}"
+            logging.getLogger().info(f"retrieving key on db for ksid ...{str(ksid)[25:]} [__get_key_on_db]")
             key = await orm.Key.objects.filter(ksid=ksid, link_id=link_id).first()
+            logging.getLogger().info(f"retrieved key on db for ksid ...{str(ksid)[25:]} [__get_key_on_db]")
         return key
     except NoMatch:
         raise HTTPException(
@@ -62,8 +66,13 @@ async def __get_key_on_db(key_id: UUID | None, ksid: UUID | None, link_id: UUID 
 async def __retrieve_key_direct(key_id: UUID) -> Key:
     orm_key: orm.Key = await __get_key_on_db(key_id=key_id, ksid=None, link_id=None)
     if orm_key is not None:
+        logging.getLogger().info(f"deleting key ...{str(key_id)[25:]} [__retrieve_key_direct]")
         await orm_key.delete()
-        key_material = await __retrieve_key_material(json_instructions=orm_key.instructions)
+        logging.getLogger().info(f"deleted key ...{str(key_id)[25:]} [__retrieve_key_direct]")
+        try:
+            key_material = await __retrieve_key_material(json_instructions=orm_key.instructions)
+        except BlockNotFound:
+            raise BlockNotFound()
         return Key(key_id, key_material)
     else:
         raise HTTPException(
@@ -75,7 +84,13 @@ async def __retrieve_key_direct(key_id: UUID) -> Key:
 # OK
 async def dbms_get_key_direct(key_id: UUID) -> KeyContainer:
     await __clear()
-    return KeyContainer(keys=tuple([await __retrieve_key_direct(key_id=key_id)]))
+    try:
+        return KeyContainer(keys=tuple([await __retrieve_key_direct(key_id=key_id)]))
+    except BlockNotFound:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed retrieving key."
+        )
 
 
 # OK
@@ -97,13 +112,15 @@ async def dbms_get_decryption_key(ksid: orm.Ksid) -> Key:
     link: orm.Link = await __get_link_by_companion(companion=ksid.kme_src)
     orm_key: orm.Key = await __get_key_on_db(ksid=ksid.ksid, link_id=link.link_id, key_id=None)
     if orm_key is not None:
+        logging.getLogger().info(f"deleting key on db for ksid ...{str(ksid.ksid)[25:]} [dbms_get_decryption_key]")
         await orm_key.delete()
+        logging.getLogger().info(f"deleted key on db for ksid ...{str(ksid.ksid)[25:]} [dbms_get_decryption_key]")
         key_material = await __retrieve_key_material(json_instructions=orm_key.instructions)
         return Key(orm_key.key_id, key_material)
     else:
         raise HTTPException(
             status_code=500,
-            detail=f"Decryption key not found for Ksid ...{str(ksid)[25:]}"
+            detail=f"Decryption key not found for Ksid ...{str(ksid.ksid)[25:]}"
         )
 
 
@@ -147,7 +164,9 @@ async def get_local_key(ksid: UUID) -> Key | None:
 async def __generate_single_key_direct(size: int, link: orm.Link, ksid: UUID, local: bool) -> Key:
     key_id: UUID = uuid4()
     key_material, json_instructions = await __generate_key_material(req_bitlength=size, link=link, use=True)
+    logging.getLogger().info(f"creating key on db for ksid ...{str(ksid)[25:]} [__generate_single_key_direct]")
     await orm.Key.objects.create(key_id=key_id, ksid=ksid, instructions=json_instructions, relay=False)
+    logging.getLogger().info(f"created key on db for ksid ...{str(ksid)[25:]} [__generate_single_key_direct]")
     if local:
         # Store also locally since it is a future key, to be returned without retrieving instructions
         await orm.LocalKey.objects.create(key_id=key_id, ksid=ksid, key=key_material, relay=False)
@@ -166,6 +185,12 @@ async def dbms_generate_keys_direct(ksid: orm.Ksid, size: int, local: bool) -> K
                     await __generate_single_key_direct(size=size, ksid=ksid.ksid, link=link, local=True)
             # the last key generated is the one returned immediately, thus it is stored only on the shared db
             key = await __generate_single_key_direct(size=size, ksid=ksid.ksid, link=link, local=False)
+        except BlockNotFound:
+            await transaction.rollback()
+            raise HTTPException(
+                status_code=500,
+                detail=f"Block not found [[...{str(ksid.src)[25:]} -> ...{str(ksid.dst)[25:]}]]"
+            )
         except:
             await transaction.rollback()
             raise HTTPException(
@@ -204,6 +229,12 @@ async def dbms_generate_keys_relay(ksid: orm.Ksid, size: int, local: bool) -> tu
             # The last generated key is the one immediately returned to the master SAE, thus it is not necessary
             # to store it locally
             key = await __generate_single_key_relay(size=size, ksid=ksid.ksid, link=link, store=False)
+        except BlockNotFound:
+            await transaction.rollback()
+            raise HTTPException(
+                status_code=500,
+                detail=f"Block not found [[...{str(ksid.src)[25:]} -> ...{str(ksid.dst)[25:]}]]"
+            )
         except:
             await transaction.rollback()
             raise HTTPException(
@@ -225,8 +256,16 @@ async def dbms_generate_encryption_key_for_relay(ksid: orm.Ksid, size: int) -> K
     async with lock:
         try:
             key_material, json_instructions = await __generate_key_material(req_bitlength=size, link=link, use=True)
+            logging.getLogger().info(f"creating key on db for ksid ...{str(ksid.ksid)[25:]} [dbms_generate_encryption_key_for_relay]")
             await orm.Key.objects.create(
                 key_id=key_id, ksid=ksid.ksid, instructions=json_instructions, relay=True, link_id=link.link_id
+            )
+            logging.getLogger().info(f"created key on db for ksid ...{str(ksid.ksid)[25:]} [dbms_generate_encryption_key_for_relay]")
+        except BlockNotFound:
+            await transaction.rollback()
+            raise HTTPException(
+                status_code=500,
+                detail=f"Block not found [[...{str(ksid.src)[25:]} -> ...{str(ksid.dst)[25:]}]]"
             )
         except:
             await transaction.rollback()
@@ -238,23 +277,6 @@ async def dbms_generate_encryption_key_for_relay(ksid: orm.Ksid, size: int) -> K
             await transaction.commit()
             return Key(key_ID=key_id, key=key_material)
             # await orm.Key.objects.filter(ksid=ksid.ksid, link_id=link.link_id).first()
-
-
-# OK
-"""async def dbms_get_encryption_key(ksid: orm.Ksid) -> Key:
-    try:
-        link: orm.Link = await __get_link_by_companion(companion=ksid.kme_dst)
-        enc_key: Final[orm.Key] = await orm.Key.objects.filter(ksid=ksid.ksid, relay=True, link_id=link.link_id).first()
-        if enc_key is None:
-            raise NoMatch()
-        key_material = await __retrieve_key_material(json_instructions=enc_key.instructions)
-        key: Final[Key] = Key(key_ID=enc_key.key_id, key=key_material)
-        return key
-    except NoMatch:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Encryption key not found"
-        )"""
 
 
 # OK
@@ -289,6 +311,10 @@ async def __get_block_by_id(block_id: UUID) -> orm.Block:
         return b
     except NoMatch:
         raise BlockNotFound()
+        # raise HTTPException(
+        #    status_code=500,
+        #    detail="Insufficient key material."
+        # )
 
 
 @dataclass(frozen=True, slots=True)
@@ -354,7 +380,12 @@ async def __get_randbits(req_bitlength: int, link: orm.Link, use: bool) -> tuple
         b: orm.Block | None = await __pop_block(link_id=link.link_id)
 
         if b is None:
+            # logging.getLogger().error(f"ERROR run out of blocks.")
             raise BlockNotFound()
+            # raise HTTPException(
+            #    status_code=500,
+            #    detail="Insufficient key material."
+            # )
 
         start = len(b.material) - b.available_bits
 
@@ -389,8 +420,10 @@ async def __generate_key_material(req_bitlength: int, link: orm.Link, use: bool)
     logging.getLogger().info(f"INFO generating key material")
     assert req_bitlength % 8 == 0
 
-    key_material, instructions = await __get_randbits(req_bitlength=req_bitlength, link=link, use=use)
-
+    try:
+        key_material, instructions = await __get_randbits(req_bitlength=req_bitlength, link=link, use=use)
+    except BlockNotFound:
+        raise BlockNotFound()
     return collectionint_to_b64(key_material), dump(instructions)
 
 
@@ -405,7 +438,10 @@ async def __retrieve_key_material(json_instructions: object) -> str:
 
     async with lock_blocks:
         for i in instructions:
-            b = await __get_block_by_id(block_id=i.block_id)
+            try:
+                b = await __get_block_by_id(block_id=i.block_id)
+            except BlockNotFound:
+                raise BlockNotFound()
             in_use = b.in_use
             in_use -= 1
             await b.update(in_use=in_use)

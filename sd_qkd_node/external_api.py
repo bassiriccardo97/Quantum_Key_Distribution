@@ -10,6 +10,7 @@ from sd_qkd_node.configs import Config
 from sd_qkd_node.database.orm import Ksid
 from sd_qkd_node.encoder import dump
 from sd_qkd_node.model import Key
+from sd_qkd_node.model.errors import Error, BlockNotFound
 from sd_qkd_node.model.exchange_key import ExchangeKeyRequest
 from sd_qkd_node.model.key_container import KeyContainer
 from sd_qkd_node.model.key_relay import KeyRelayRequest, KeyRelayResponse
@@ -45,7 +46,14 @@ async def kme_api_key_relay(request: KeyRelayRequest, next_kme_addr: str) -> Key
                 json=dump(request),
                 timeout=None
             )
-            response: KeyRelayResponse = KeyRelayResponse(**res.json())
+            if res.status_code == 200:
+                response: KeyRelayResponse = KeyRelayResponse(**res.json())
+            else:
+                e: Error = Error(**res.json())
+                # logging.getLogger().error(f"ERROR {e.message}")
+                if "Block not found" in e.message:
+                    raise BlockNotFound()
+                return KeyRelayResponse(addr='')
             # logging.getLogger().error(f"AAAAAAA {response.addr}")
             return response
         except (ConnectError, ReadError):
@@ -168,7 +176,7 @@ async def sdnc_api_new_link(link_id: UUID, rate: float, ttl: int) -> None:
 
 
 # kwargs can be rate and ttl
-async def sdnc_api_update_link(link_id: UUID, **kwargs: dict[str, int | float]) -> None:
+async def sdnc_api_update_link(link_id: UUID, rate: float) -> None:
     async with AsyncClient() as client:
         try:
             '''logging.getLogger().info(
@@ -176,7 +184,7 @@ async def sdnc_api_update_link(link_id: UUID, **kwargs: dict[str, int | float]) 
             )'''
             await client.post(
                 url=f"{Config.SDN_CONTROLLER_ADDRESS}/update_link",
-                params={"link_id": link_id, "updates": kwargs},
+                params={"link_id": link_id, "rate": rate},
                 timeout=None
             )
         except (ConnectError, ReadError):

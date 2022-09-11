@@ -1,3 +1,4 @@
+import logging
 from typing import Final
 
 from httpx import Response
@@ -26,6 +27,9 @@ async def open_key_session(
     """
     API to make the KME request a connection to the SDN Controller.
     """
+    logging.getLogger().warning(
+        f"start open_key_session [[...{str(osr.src)[25:]} -> ...{str(osr.dst)[25:]}]]"
+    )
     if osr.src_flag:
         await dbms_save_sae(sae_id=osr.src, ip=osr.ip, port=osr.port)
     else:
@@ -37,3 +41,7 @@ async def open_key_session(
             status_code=response.status_code,
             detail=error.message
         )
+
+    logging.getLogger().warning(
+        f"finish open_key_session [[...{str(osr.src)[25:]} -> ...{str(osr.dst)[25:]}]]"
+    )

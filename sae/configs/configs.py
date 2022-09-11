@@ -19,6 +19,7 @@ class Configuration:
         self.KME_IP = kme_addr.split(":")[0]
         self.KME_BASE_URL = config["SHARED"]["KME_BASE_URL"]
         self.AGENT_BASE_URL = config["SHARED"]["AGENT_BASE_URL"]
+        self.average_duration = float(config["SHARED"]["average_duration"])
         self.KME_PORT = int(kme_addr.split(":")[1])
         self.CONNECTIONS = {}
 

@@ -3,7 +3,7 @@ from os import environ
 from typing import Final
 from uuid import UUID
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, HTTPException
 
 from sd_qkd_node.configs import Config
 from sd_qkd_node.database import orm
@@ -11,6 +11,7 @@ from sd_qkd_node.database.dbms import dbms_get_kme_address, dbms_get_ksid, get_l
     dbms_generate_keys_relay, dbms_generate_encryption_key_for_relay
 from sd_qkd_node.external_api import kme_api_key_relay, kme_api_exchange_key
 from sd_qkd_node.model import Key
+from sd_qkd_node.model.errors import BlockNotFound
 from sd_qkd_node.model.exchange_key import ExchangeKeyRequest
 from sd_qkd_node.model.key_container import KeyContainer
 from sd_qkd_node.model.key_relay import KeyRelayRequest, KeyRelayResponse
@@ -36,12 +37,21 @@ async def get_key(
     API to get the Key for the calling master SAE. Starts the key relay if needed.
     """
     # TODO number param not implemented
-
+    logging.getLogger().warning(f"start enc_keys [[...{str(master_sae_id)[25:]} -> ...{str(slave_sae_id)[25:]}]]")
     ksid: orm.Ksid = await dbms_get_ksid(slave_sae_id=slave_sae_id, master_sae_id=master_sae_id)
-    if ksid.relay:
-        return await __get_key_relay(ksid=ksid, size=size)
-    else:
-        return await __get_key_direct(ksid=ksid, size=size)
+    kc: KeyContainer
+    try:
+        if ksid.relay:
+            kc = await __get_key_relay(ksid=ksid, size=size)
+        else:
+            kc = await __get_key_direct(ksid=ksid, size=size)
+    except BlockNotFound:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Block not found [[...{str(ksid.src)[25:]} -> ...{str(ksid.dst)[25:]}]]"
+        )
+    logging.getLogger().warning(f"finish enc_keys [[...{str(master_sae_id)[25:]} -> ...{str(slave_sae_id)[25:]}]]")
+    return kc
 
 
 async def __get_key_direct(ksid: orm.Ksid, size: int) -> KeyContainer:
@@ -109,6 +119,11 @@ async def __start_relay(ksid: orm.Ksid, size: int, future_keys: list[Key], new_k
         keys=Key(key_ID=UUID('00000000-0000-0000-0000-000000000000'), key=""), ksid=ksid.ksid, size=size
     )
     res: KeyRelayResponse = await kme_api_key_relay(request=req, next_kme_addr=next_kme_addr)
+    if res.addr == "":
+        raise HTTPException(
+            status_code=500,
+            detail="Internal error."
+        )
     # logging.getLogger().error(f"THE LAST KME ADDR IS {res.addr}")
     # TODO probably also the key_id should be encrypted to avoid leak of any type
     logging.getLogger().info(f"AAAAA ENCRYPTION KEY {enc_key.key}")

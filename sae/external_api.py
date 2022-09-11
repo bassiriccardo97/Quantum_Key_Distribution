@@ -16,7 +16,7 @@ async def kme_api_enc_key(slave_id: UUID) -> httpx.Response:
     Returns a httpx Response."""
     async with AsyncClient() as client:
         try:
-            logging.getLogger().warning(
+            logging.getLogger().info(
                 f"calling enc_keys to communicate with ...{str(slave_id)[25:]}"
             )
             resp: httpx.Response = await client.get(

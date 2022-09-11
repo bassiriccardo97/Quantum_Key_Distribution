@@ -10,6 +10,7 @@ from struct import pack
 from typing import Final
 from uuid import uuid4
 
+import numpy
 from jsons import dumps
 
 from qcs import Block
@@ -28,11 +29,11 @@ KME_B = KME("localhost", 8001)
 KMEs = (KME_A, KME_B)
 
 DEBUG: bool = True
-GEN_INTERVAL: int = 5
+GEN_INTERVAL: int = 1
 LINK_ID = uuid4()
 
-LB = 1000
-UB = 2000
+LB = 0
+UB = 10
 
 
 def timestamp() -> int:
@@ -50,7 +51,6 @@ def get_random_bits() -> tuple[int, ...]:
     :return: a tuple, containing a random number of random bytes.
     """
     from random import getrandbits, randint
-
     return tuple(getrandbits(8) for _ in range(randint(LB, UB)))
 
 
@@ -99,22 +99,22 @@ def read_args() -> Namespace:
         "-i",
         "--interval",
         type=str,
-        help="The generation interval of bytes in seconds. Default 10",
-        default="10",
+        help="The generation interval of bytes in seconds. Default 1",
+        default="1",
     )
     parser.add_argument(
         "-lb",
         "--lowerb",
         type=str,
-        help="The lower bound number of bytes generated. Default 1000",
-        default="1000",
+        help="The produced Bytes lower bound. Default 0B/s.",
+        default="0",
     )
     parser.add_argument(
         "-ub",
         "--upperb",
         type=str,
-        help="The upper bound number of bytes generated. Default 2000",
-        default="2000",
+        help="The produced Bytes upper bound. Default 10B/s",
+        default="10",
     )
 
     return parser.parse_args()
@@ -130,8 +130,8 @@ def set_params(kme1: str, kme2: str, interval: str, lb: str, ub: str) -> None:
     DEBUG = bool(config["SHARED"]["DEBUG"])
     GEN_INTERVAL = int(interval)
     KMEs = (KME_A, KME_B)
-    LB = int(lb)
-    UB = int(ub)
+    LB = float(lb)
+    UB = float(ub)
 
 
 async def main() -> None:
@@ -140,12 +140,10 @@ async def main() -> None:
     args = read_args()
     set_params(kme1=args.kme1, kme2=args.kme2, interval=args.interval, lb=args.lowerb, ub=args.upperb)
 
-    count = 0
     while True:
         await sleep(GEN_INTERVAL)
 
         new_block = Block(timestamp(), uuid4(), get_random_bits(), LINK_ID)
-        count += 1
         for kme in KMEs:
             await send(new_block, kme)
 
