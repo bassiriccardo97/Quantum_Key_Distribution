@@ -20,7 +20,7 @@ class Base(ABC):
         self.LOCAL_DB_URL = f"sqlite:///Controller_local_db"
         self.TTL = int(config["GENERIC"]["TTL"])
         self.KEYS_AHEAD = int(config["GENERIC"]["KEYS_AHEAD"])
-        self.N_LINKS = int(config["RING"]["n_links"])
+        self.N_KME = int(config["RING"]["n_kme"])
 
     @property
     @abstractmethod

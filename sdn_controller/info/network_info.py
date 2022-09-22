@@ -25,7 +25,7 @@ def add_link_in_network(kme1: UUID, kme2: UUID, rate: float) -> None:
         spare_bytes.append(0)
     spare_bytes.append(rate)
     G.add_edge(kme1, kme2, rate=round(rate, 2), used_rate=0.0, spare_bytes=spare_bytes)
-    if len(G.edges) == Config.N_LINKS:
+    if len(G.edges) == Config.N_KME:
         all_paths = dict(nx.all_pairs_shortest_path(G))
         # print_graph()
 

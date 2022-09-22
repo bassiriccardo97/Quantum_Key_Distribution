@@ -106,15 +106,15 @@ def read_args() -> Namespace:
         "-lb",
         "--lowerb",
         type=str,
-        help="The produced Bytes lower bound. Default 0B/s.",
-        default="0",
+        help="The produced Bytes lower bound. Default 33B/s.",
+        default="33",
     )
     parser.add_argument(
         "-ub",
         "--upperb",
         type=str,
-        help="The produced Bytes upper bound. Default 10B/s",
-        default="10",
+        help="The produced Bytes upper bound. Default 47B/s",
+        default="47",
     )
 
     return parser.parse_args()

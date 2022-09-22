@@ -33,8 +33,8 @@ class Base(ABC):
         self.MAX_KEY_COUNT = int(config["SHARED"]["MAX_KEY_COUNT"])
         self.MAX_SAE_ID_COUNT = int(config["SHARED"]["MAX_SAE_ID_COUNT"])
         self.SDN_CONTROLLER_IP = config["SHARED"]["SDN_CONTROLLER_IP"]
-        self.SND_CONTROLLER_PORT = int(config["SHARED"]["SND_CONTROLLER_PORT"])
-        self.SDN_CONTROLLER_ADDRESS = f"http://{self.SDN_CONTROLLER_IP}:{self.SND_CONTROLLER_PORT}"
+        self.SDN_CONTROLLER_PORT = int(config["SHARED"]["SDN_CONTROLLER_PORT"])
+        self.SDN_CONTROLLER_ADDRESS = f"http://{self.SDN_CONTROLLER_IP}:{self.SDN_CONTROLLER_PORT}"
         self.SUPPORTED_EXTENSION_PARAMS: frozenset[str] = frozenset()
         self.LOCAL_DB_URL = f"sqlite:///{self.KME_IP}_{self.SAE_TO_KME_PORT}_local_db"
         self.KEYS_AHEAD = int(config["SHARED"]["KEYS_AHEAD"])
